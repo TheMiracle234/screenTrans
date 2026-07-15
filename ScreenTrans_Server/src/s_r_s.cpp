@@ -32,7 +32,6 @@ std::condition_variable cv_delete_thread;
 std::unordered_map<SOCKET, SOCKET> choices_of; // <socket of client(in server), client socket choice>
 bool need_check_thread = false;
 
-
 /*
 recv: id, name, choose_socket, audio_frames, pk_size, pk[n]
 send: signals, id (, name (, audio_frames, pk_size, pk[n]))
@@ -142,11 +141,8 @@ void deleteThread() {
 		std::lock_guard lock_threads(mtx_threads);
 		for (size_t i = 0; i < client_sockets.size(); ) {
 			if (client_sockets[i]->Closed()) {
-				// 先 join 线程，再移除
-				if (clients_threads[i].joinable())
-					clients_threads[i].join();   // 等待线程自然结束
-				client_sockets.erase(client_sockets.begin() + i);
 				clients_threads.erase(clients_threads.begin() + i);
+				client_sockets.erase(client_sockets.begin() + i);
 			}
 			else {
 				++i;
@@ -173,15 +169,16 @@ int main() {
 			println("server accept error");
 			continue;
 		}
+		Client* ptr;
 		{
 			std::lock_guard lock(mtx_cs);
-			client_sockets.emplace_back(std::make_unique<Client>(std::move(*c)));
+			auto tmp = std::make_unique<Client>(std::move(*c));
+			ptr = tmp.get();
+			client_sockets.emplace_back(std::move(tmp));
 		}
 		{
 			std::lock_guard lock(mtx_threads);
-			clients_threads.emplace_back(
-				std::jthread(sendMsg, client_sockets.back().get())
-			);
+			clients_threads.emplace_back(std::jthread(sendMsg, ptr));
 		}
 	}
 }

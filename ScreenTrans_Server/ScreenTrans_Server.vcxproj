@@ -19,7 +19,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\impl\Room.cpp" />
     <ClCompile Include="src\s_r_s.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Room.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -105,7 +109,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>GLEW_STATIC</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>

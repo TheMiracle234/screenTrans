@@ -1,4 +1,4 @@
-#ifndef TMCLIENT_H
+Ôªø#ifndef TMCLIENT_H
 #define TMCLIENT_H
 
 #include "Socket.h"
@@ -72,15 +72,15 @@ namespace TM {
         }
     }
 
-    // ÷˜ƒ£∞Â£∫≤ª « vector
+    // ‰∏ªÊ®°ÊùøÔºö‰∏çÊòØ vector
     template <typename T>
     struct is_vector : std::false_type {};
 
-    // ÃÿªØ∆•≈‰»Œ∫Œ vector<...>
+    // ÁâπÂåñÂåπÈÖç‰ªª‰Ωï vector<...>
     template <typename T, typename Alloc>
     struct is_vector<std::vector<T, Alloc>> : std::true_type {};
 
-    // ∏®÷˙±‰¡øƒ£∞Â (C++17)
+    // ËæÖÂä©ÂèòÈáèÊ®°Êùø (C++17)
     template <typename T>
     inline constexpr bool is_vector_v = is_vector<T>::value;
 
@@ -118,18 +118,7 @@ namespace TM {
         requires is_vector_v<vec>
         bool Send(vec data) {
             using elem_t = typename vec::value_type;
-
-            constexpr size_t PARALLEL_SIZE = 2048;
-            if (data.size() > PARALLEL_SIZE) {
-                std::for_each(std::execution::par_unseq, data.begin(), data.end(), [](elem_t& elem) {
-                    elem = host_to_network(elem);
-                });
-            }
-            else {
-                std::for_each(data.begin(), data.end(), [](elem_t& elem) {
-                    elem = host_to_network(elem);
-                });
-			}
+            std::for_each(data.begin(), data.end(), [](elem_t& elem) { elem = host_to_network(elem); });
             return Send(data.data(), (msg_size)(sizeof(elem_t) * data.size()));
         }
 
@@ -170,17 +159,7 @@ namespace TM {
             }
             std::vector<T> res(bytes->size() / sizeof(T));
             memcpy(res.data(), bytes->data(), bytes->size());
-            constexpr size_t PARALLEL_SIZE = 2048;
-            if (res.size() > PARALLEL_SIZE) {
-                std::for_each(std::execution::par_unseq, res.begin(), res.end(), [](T& elem) {
-                    elem = network_to_host(elem);
-                });
-            }
-            else {
-                std::for_each(res.begin(), res.end(), [](T& elem) {
-                    elem = network_to_host(elem);
-                });
-            }
+            std::for_each(res.begin(), res.end(), [](T& elem) { elem = network_to_host(elem); });
             return res;
         }
 
