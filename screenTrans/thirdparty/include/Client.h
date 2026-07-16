@@ -46,7 +46,7 @@ namespace TM {
 
     template<typename T>
     requires std::is_integral_v<T> || std::is_floating_point_v<T>
-    inline constexpr T host_to_network(T value) noexcept
+    [[nodiscard]] inline constexpr T host_to_network(T value) noexcept
     {
         if constexpr (std::endian::native == std::endian::little)
         {
@@ -60,7 +60,7 @@ namespace TM {
 
     template<typename T>
     requires std::is_integral_v<T> || std::is_floating_point_v<T>
-    inline constexpr T network_to_host(T value) noexcept
+    [[nodiscard]] inline constexpr T network_to_host(T value) noexcept
     {
         if constexpr (std::endian::native == std::endian::little)
         {
@@ -133,11 +133,11 @@ namespace TM {
 
 		bool Send(const std::string& str);
 
-		std::optional<std::vector<uint8_t>> Receive();
+        [[nodiscard]] std::optional<std::vector<uint8_t>> Receive();
         
         template<typename T>
         requires std::is_integral_v<T> || std::is_floating_point_v<T>
-        std::optional<T> ReceiveParseTo() {
+        [[nodiscard]] std::optional<T> ReceiveParseTo() {
             auto data = this->Receive();
             if (!data || data->size() != sizeof(T)) {
                 TM_SOCKET_SET_ERROR("receive not match");
@@ -151,7 +151,7 @@ namespace TM {
         // auto ntoh
         template<typename T>
         requires std::is_integral_v<T> || std::is_floating_point_v<T>
-        std::optional<std::vector<T>> ReceiveVec() {
+        [[nodiscard]] std::optional<std::vector<T>> ReceiveVec() {
             auto bytes = Receive();
             if (!bytes || bytes->size() % sizeof(T) != 0) {
                 TM_SOCKET_SET_ERROR("ReceiveVec but elem not match size");
@@ -164,7 +164,7 @@ namespace TM {
         }
 
 		// make sure the msg send to you is a string(end by \0)
-		std::optional<std::string> ReceiveString();
+        [[nodiscard]] std::optional<std::string> ReceiveString();
 	};
 };
 

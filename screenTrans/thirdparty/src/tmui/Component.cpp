@@ -1,4 +1,4 @@
-#include "component/Component.h"
+﻿#include "component/Component.h"
 #include "render/Shader.h"
 #include "debug/debug.h"
 
@@ -36,9 +36,8 @@ namespace TM {
 		}
 		//window delete it
 		auto& comps = window->components;
-		auto it = std::find(comps.begin(), comps.end(), this);
+		auto it = std::find(comps.begin(), comps.end(), this); 
 		if (it != comps.end()) {
-			TM_println("erase borrow");
 			comps.erase(it);
 		}
 	}

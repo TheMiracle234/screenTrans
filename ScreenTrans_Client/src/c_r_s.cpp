@@ -6,6 +6,7 @@
 #include <AudioCapture.h>
 #include <ScreenCapture.h>
 #include <st_signals.h>
+#include <Room.h>
 
 #include <iostream>
 #include <thread>
@@ -44,11 +45,13 @@ using ST::H264Encoder, ST::H264Decoder, ST::AudioPlay, ST::AudioCapture, ST::Scr
 
 struct {
 	std::string name;
+	uint32_t room_id;
+	uint32_t passwd;
 } logger;
 
 constexpr int SLEEP_TIME = 5;
 constexpr size_t MAX_VIDEO_FRAMES = 10;
-constexpr size_t KEEP_FRAMES = 4; //濮ｅ繘鏁撴潪璺劜閹风兘鏁撻弬銈嗗 MAX_VIDEO_FRAMES 閺冨爼鏁撻弬銈嗗闁跨喐鏋婚幏鐑芥晸闁炬壆顣幏绌巖ames闁跨喎褰ㄩ幉瀣闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹风rames
+constexpr size_t KEEP_FRAMES = 4;
 
 std::mutex mtx_video_frames;
 std::mutex mtx_close;
@@ -67,13 +70,11 @@ TM::Client client(Socket::TCP, Socket::IPV4);
 
 namespace ImGui {
 	void DockingSpace() {
-		// 闁跨喐鏋婚幏宄板絿闁跨喐鏋婚幏鐑芥晸閹恒儱灏呴幏鐑芥晸閺傘倖瀚归幁顖炴晸閺傘倖瀚归柨鐔告灮閹?DockSpace 闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹风兘鏁撻弬銈嗗鎼存棃鏁撻惌顐ユ彧閹风兘鏁撻弬銈嗗
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->WorkPos);
 		ImGui::SetNextWindowSize(viewport->WorkSize);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		// 闁跨喐鏋婚幏鐑芥晸閻偉鎻幏鐑芥晸閺傘倖瀚归柨鐔告灮閹峰嘲绱￠柨鐔告灮閹风兘鏁撻惈顐ｅ敾閹风兘鏁撻弬銈嗗闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔烘骄閹插瀚归柨鐔告灮閹风兘鏁撻弬銈嗗闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔哄珱鐠佽瀚?闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹峰嘲鐨柨鐔告灮閹?
 		static constexpr ImGuiWindowFlags dock_flags = ImGuiWindowFlags_NoDocking |
 			ImGuiWindowFlags_NoTitleBar |
 			ImGuiWindowFlags_NoCollapse |
@@ -89,7 +90,6 @@ namespace ImGui {
 		ImGui::Begin("MainDockSpace", nullptr, dock_flags);
 		ImGui::PopStyleVar(3);
 
-		// 闁跨喐鏋婚幏鐑芥晸閺傘倖瀚?DockSpace闁跨喐鏋婚幏绋〥 闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹烽攱瀵氶柨鐔告灮閹风兘鏁撻弬銈嗗
 		ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
 		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 	}
@@ -163,11 +163,9 @@ void Receive() {
 				size_t new_count = frames.size();
 
 				if (current_size + new_count > MAX_VIDEO_FRAMES) {
-					// 闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹风兘鏁撻弬銈嗗闁跨喐鏋婚幏鐑芥晸?
 					while (!total_video_frames.empty())
 						total_video_frames.pop();
 
-					// 閸欘亪鏁撻弬銈嗗闁跨喐鏋婚幏?frames 闁跨喎褰ㄧ喊澶嬪闁跨喐鏋婚幏鐑芥晸?4 闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹风兘鏁撻柧鎵畱閿濆繑瀚?
 					size_t keep = std::min(KEEP_FRAMES, new_count);
 					auto start = frames.end() - keep;
 					for (auto it = start; it != frames.end(); ++it) {
@@ -175,7 +173,6 @@ void Receive() {
 					}
 				}
 				else {
-					// 閺堫亪鏁撻弬銈嗗闁跨喓娼鹃敐蹇斿闁跨喐鏋婚幏鐑芥晸閺傘倖瀚归柨鐔告灮閹风兘鏁?
 					for (auto& frame : frames) {
 						total_video_frames.push(std::move(frame));
 					}
@@ -380,7 +377,7 @@ void Show() {
 		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
 		ImGui::Begin("main");
 		ImGui::End();// main
-		style.Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR; // 闁跨喕顢滈棃鈺傚
+		style.Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
 		// ============ main window ============ 
 
 		ImGui::End();//docking end
@@ -426,15 +423,101 @@ void Show() {
 #endif
 }
 
-static UINT original_in_cp = 0;
-static UINT original_out_cp = 0;
+void register_handle() {
+	Choice choice = -1;
+	while (choice == -1) {
+		println("choose mode");
+		println((int)choice_enter_room << ": enter a room");
+		println((int)choice_make_room << ": make a room");
+		if (!(std::cin >> choice)) {
+			std::cin.clear(); // 清除错误标志
+			std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // 丢弃错误行
+			choice = -1;
+		}
+		if (choice == -1 || choice != choice_enter_room && choice != choice_make_room) {
+			println("invalid input");
+			choice = -1;
+		}
+	}
+	client.Send(choice);
 
+	switch (choice) {
+	case choice_make_room: {
+		logger.passwd = Room::invalid_passwd;
+		while (logger.passwd == Room::invalid_passwd) {
+			println("set your password (1~4294967295): ");
+			std::cin >> logger.passwd;
+		}
+
+		client.Send(logger.passwd);
+		auto room_id0 = client.ReceiveParseTo<uint32_t>();
+		if (!room_id0) {
+			goto err_server_status;
+		}
+		logger.room_id = *room_id0;
+		println("your room id: " << logger.room_id);
+	}break;
+	case choice_enter_room: {
+		uint32_t room_id = Room::invalid_id;
+		uint32_t passwd = Room::invalid_passwd;
+		for (;;) {
+			println("input room_id(1~4294967295), password(1~4294967295):");
+			if (!(std::cin >> room_id >> passwd)) {
+				std::cin.clear(); // 清除错误标志
+				std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // 丢弃错误行
+			}
+			if (room_id == Room::invalid_id) {
+				println("room_id format invalid");
+				continue;
+			}
+			if (passwd == Room::invalid_passwd) {
+				println("passwd format invalid");
+				continue;
+			}
+
+			client.Send(room_id);
+			client.Send(passwd);
+
+			auto room_id_ok = client.ReceiveParseTo<bool>();
+			if (!room_id_ok.has_value()) {
+				goto err_server_status;
+			}
+			if (!room_id_ok.value()) {
+				println("room id not exist");
+				continue;
+			}
+
+			auto passwd_ok = client.ReceiveParseTo<bool>();
+			if (!passwd_ok.has_value()) {
+				goto err_server_status;
+			}
+			if (!passwd_ok.value()) {
+				println("password wrong");
+				continue;
+			}
+			break;
+		}
+		logger.passwd = passwd;
+		logger.room_id = room_id;
+	}break;
+	}
+
+	return;
+err_server_status:
+	println("server status error");
+	system("pause");
+	exit(1);
+}
+
+#ifndef NDEBUG
 #include <filesystem>
+#endif//NDEBUG
 
 int main() {
-
+#ifndef NDEBUG
 	std::filesystem::path cwd = std::filesystem::current_path();
 	std::cout << "当前工作目录：" << cwd << std::endl;
+#endif//NDEBUG
 
 	println("your socket: " << client.Id());
 	println("input ipv4, port, logging_name:");
@@ -443,8 +526,12 @@ int main() {
 		uint32_t port;
 		std::cin >> ip >> port >> logger.name;
 		client.ConnectTo(ip.c_str(), port);
+		println("connected to server successfully");
 	}
 	
+	register_handle();
+	println("register successfully");
+
 	chosen_user = logger.name;
 	users[chosen_user] = client.Id();
 

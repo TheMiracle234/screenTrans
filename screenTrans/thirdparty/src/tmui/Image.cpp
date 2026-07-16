@@ -1,4 +1,4 @@
-#include "component/Image.h"
+﻿#include "component/Image.h"
 #include "window/Window.h"
 #include "render/Data.h"
 #include "util/util.h"
@@ -186,7 +186,6 @@ namespace TM {
 		};
 		auto& data = getData();
 		int offset = data.indices[indicesPos.offset] * data.structure.size;
-		TM_println("offset: " << indicesPos.offset);
 
 		shader->getBuffer().bindAll();
 		glBufferSubData(GL_ARRAY_BUFFER, (GLintptr)offset, sizeof(sub_data), sub_data);

@@ -1,6 +1,7 @@
 ﻿#include <Server.h>
 #include <Client.h>
 #include <st_signals.h>
+#include <Room.h>
 
 #include <thread>
 #include <vector>
@@ -18,140 +19,114 @@
 #define println(x) std::cout<< x << "\n"
 #define print(x) std::cout<< x
 //#define pv(x) std::cout<< #x << ": " << x << "\n"
-#define loop for(;;)
 
 using TM::Server, TM::Client;
 
-std::shared_mutex mtx_cs;
-std::mutex mtx_threads;
-std::mutex mtx_need_check;
-std::shared_mutex mutex_choices;
-std::vector<std::unique_ptr<Client>> client_sockets;
-std::vector<std::jthread> clients_threads;
-std::condition_variable cv_delete_thread;
-std::unordered_map<SOCKET, SOCKET> choices_of; // <socket of client(in server), client socket choice>
-bool need_check_thread = false;
+// since in vector there is always copy or move and Room is so big that even move is slow(which we don't allow), so we use unique_ptr as a fast move container
+std::mutex mtx_rooms;
+std::vector<std::unique_ptr<Room>> rooms;
 
-/*
-recv: id, name, choose_socket, audio_frames, pk_size, pk[n]
-send: signals, id (, name (, audio_frames, pk_size, pk[n]))
+static void register_handle(std::optional<Client> c) {
+	if (!c) {
+		println("server accept error");
+		return;
+	}
 
-if closed 
-	send: signals, id
+	// choice
+	auto choice = c->ReceiveParseTo<Choice>();
+	if (!choice)
+		goto err_interrupted;
 
-if choiceNotMatch
-	send: signals, id, name
+	switch (*choice) {
+	case choice_make_room: {
+		auto passwd = c->ReceiveParseTo<uint32_t>();
+		if (!passwd.has_value())
+			goto err_interrupted;
 
-*/
-void sendMsg(Client* client) {
-	SOCKET save_id = INVALID_SOCKET;
-
-	using Flag = uint8_t;
-	enum : Flag{
-		flag_closedSignalSent		 = 0x01,
-		flag_clientChoiceRecorded	 = 0x02,
-	};
-	Flag flags = 0;
-	SOCKET last_chosen_socket = INVALID_SOCKET;
-	loop{
-		if (client->Closed() && flags & flag_closedSignalSent)
-			{ break; }
-
-		auto id = client->ReceiveParseTo<SOCKET>();
-		auto name = client->ReceiveString();
-		auto choose_socket = client->ReceiveParseTo<SOCKET>();
-		auto audio_frames = client->ReceiveVec<int16_t>();
-		auto pk_size = client->ReceiveParseTo<int32_t>();
-
-
-		std::vector<std::vector<uint8_t>> packets;
-		if (!client->Closed()) {
-			if (save_id == INVALID_SOCKET) { // since there always be at least one loop, this "=" will always be done
-				save_id = *id;
-				println("connected to client socket: " << save_id);
-			}
-
-			if (!(flags & flag_clientChoiceRecorded) || (*choose_socket != last_chosen_socket)) {
-				{
-					std::lock_guard lock(mutex_choices);
-					choices_of[client->Id()] = *choose_socket;
-				}
-				last_chosen_socket = *choose_socket;
-				flags |= flag_clientChoiceRecorded;
-			}
-
-			packets = std::vector<std::vector<uint8_t>>(client->Closed() ? 0 : *pk_size);
-			for (auto& pk : packets) {
-				auto tmp = client->Receive();
-				pk = std::move(*tmp);
-			}
-		}
+		auto room = std::make_unique<Room>(*passwd);
+		c->Send(room->id());
+		println("give id: " << room->id());
+		room->pushClient(std::move(*c));
 		{
-			std::lock_guard lock(mtx_cs);
-			std::for_each(client_sockets.begin(), client_sockets.end(), [&](std::unique_ptr<Client>& c) {
-				if (client->Closed()) {
-					c->Send(signal_closed);
-					c->Send(save_id);
-					flags |= flag_closedSignalSent;
-					return;
-				}
+			std::lock_guard lock(mtx_rooms);
+			rooms.push_back(std::move(room));
+			std::sort(rooms.begin(), rooms.end(), [](std::unique_ptr<Room>& r1, std::unique_ptr<Room>& r2) {
+				return r1->id() < r2->id();
+			});
+		}
+	} break;
+	case choice_enter_room: {
+		// room id and passwd
+		bool enter_ok = true;
+		for (;;) {
+			auto id = c->ReceiveParseTo<uint32_t>();
+			auto passwd = c->ReceiveParseTo<uint32_t>();
+			if (!id)
+				goto err_interrupted;
 
-				bool tmp;
-				{
-					std::shared_lock lock_choices(mutex_choices);
-					auto choice = choices_of.find(c->Id());
-					tmp = choice == choices_of.end() || choice->second != *id;
-				}
-				if (tmp) {
-					c->Send(signal_choiceNotMatch);
-					c->Send(*id);
-					c->Send(*name);
-					return;
-				}
+			// once client gets room, we can't it destruct in the middle
+			std::lock_guard lock(mtx_rooms);
+			auto room = std::lower_bound(rooms.begin(), rooms.end(), 0, [id](std::unique_ptr<Room>& r, int) { return r->id() < id; });
+			if (room == rooms.end() || (*room)->id() != *id) {
+				c->Send(false);
+				continue;
+			}
+			else {
+				c->Send(true);
+			}
 
-				c->Send(signal_none);
-				c->Send(*id);
-				c->Send(*name);
-				c->Send(*audio_frames);
-				c->Send(*pk_size);
-				for (auto& pk : packets) {
-					c->Send(pk);
+			if (!passwd)
+				goto err_interrupted;
+			if (passwd != (*room)->passwd()) {
+				c->Send(false); // failed
+				continue;
+			}
+			else {
+				c->Send(true); // success
+			}
+
+			(*room)->pushClient(std::move(*c));
+		}
+	} break;
+	}
+
+	println("connected successfully");
+	return;
+
+err_interrupted:
+	println("interrupted in the middle");
+}
+
+// erase empty and unused rooms every 5 seconds
+void check_empty_rooms() {
+	for (;;) {
+		std::this_thread::sleep_for(std::chrono::seconds(5));
+		std::vector<uint32_t> record;
+		{
+			std::lock_guard lock(mtx_rooms);
+			std::erase_if(rooms, [&record](std::unique_ptr<Room>& r) {
+				if (r->empty() && r->used()) {
+					record.push_back(r->id());
+					return true;
+				}
+				else {
+					return false;
 				}
 			});
 		}
-	}
-
-	println("closed client socket: " << save_id);
-	{
-		std::lock_guard lock(mtx_need_check);
-		need_check_thread = true;
-	}
-	cv_delete_thread.notify_one();
-}
-
-void deleteThread() {
-	while (true) {
-		{
-			std::unique_lock lock(mtx_need_check);
-			cv_delete_thread.wait(lock, [] { return need_check_thread; });
-			need_check_thread = false;
+		if (record.empty()) {
+#ifndef NDEBUG
+			println("no room erased in this loop");
+#endif//NDEBUG
+			continue;
 		}
-
-		std::lock_guard lock_cs(mtx_cs);
-		std::lock_guard lock_threads(mtx_threads);
-		for (size_t i = 0; i < client_sockets.size(); ) {
-			if (client_sockets[i]->Closed()) {
-				clients_threads.erase(clients_threads.begin() + i);
-				client_sockets.erase(client_sockets.begin() + i);
-			}
-			else {
-				++i;
-			}
+		println("erased rooms in this loop:");
+		for (auto i : record) {
+			print(i << " ");
 		}
+		println("");
 	}
 }
-
-
 
 int main() {
 	uint32_t port;
@@ -161,24 +136,10 @@ int main() {
 	server.Listen();
 	println("waiting for the first client...");
 
-	std::jthread delete_thread_thread(deleteThread);
-
-	loop{
+	std::jthread t_check_empty_rooms(check_empty_rooms);
+	for (;;) {
 		auto c = server.Accept();
-		if (!c) {
-			println("server accept error");
-			continue;
-		}
-		Client* ptr;
-		{
-			std::lock_guard lock(mtx_cs);
-			auto tmp = std::make_unique<Client>(std::move(*c));
-			ptr = tmp.get();
-			client_sockets.emplace_back(std::move(tmp));
-		}
-		{
-			std::lock_guard lock(mtx_threads);
-			clients_threads.emplace_back(std::jthread(sendMsg, ptr));
-		}
+		std::thread register_thread(register_handle, std::move(c));
+		register_thread.detach();
 	}
 }

@@ -22,12 +22,12 @@ if choiceNotMatch
 void Room::sendMsg(Client* client, Room* room) {
 	SOCKET save_id = INVALID_SOCKET;
 
-	using Flag = uint8_t;
-	enum : Flag {
+	using Flag0 = uint8_t;
+	enum : Flag0 {
 		flag_closedSignalSent = 0x01,
 		flag_clientChoiceRecorded = 0x02,
 	};
-	Flag flags = 0;
+	Flag0 flags = 0;
 	SOCKET last_chosen_socket = INVALID_SOCKET;
 	for (;;) {
 		if (client->Closed() && flags & flag_closedSignalSent)
@@ -102,7 +102,7 @@ void Room::sendMsg(Client* client, Room* room) {
 	println("closed client socket: " << save_id);
 	{
 		std::lock_guard lock(room->m_mtx_need_check);
-		room->m_need_check_thread = true;
+		room->m_flag |= f_need_check_thread;
 	}
 	room->m_cv_delete_thread.notify_one();
 }
@@ -111,11 +111,16 @@ void Room::deleteThread(Room* room) {
 	for (;;) {
 		{
 			std::unique_lock lock(room->m_mtx_need_check);
-			room->m_cv_delete_thread.wait(lock, [&room] { return room->m_need_check_thread; });
-			room->m_need_check_thread = false;
+			room->m_cv_delete_thread.wait(lock, [&room] { 
+				return room->m_flag & f_need_check_thread; 
+			});
+			room->m_flag &= ~f_need_check_thread;
 		}
-		if (room->m_id == invalid_id)
-			break;
+		{
+			std::lock_guard lock(room->m_mtx_id);
+			if (room->m_id == invalid_id)
+				break;
+		}
 		{
 			std::lock_guard lock_cs(room->m_mtx_cs);
 			std::lock_guard lock_threads(room->m_mtx_threads);
@@ -132,36 +137,51 @@ void Room::deleteThread(Room* room) {
 	}
 }
 
-Room::Room(const std::optional<uint32_t>& passwd = {}) :
+Room::Room(const std::optional<uint32_t>& passwd) :
 	m_passwd(passwd),
 	m_delete_thread_thread(deleteThread, this)
 {
 	std::random_device rd;
 	std::mt19937 gen(rd());
 	std::uniform_int_distribution<uint32_t> dist(1, 0xFFFFFFFF);
-	while (m_id = invalid_id) {
-		m_id = dist(gen);
-		if (Room::ids.end() != std::find(Room::ids.begin(), Room::ids.end(), m_id)) {
-			m_id = invalid_id;
-		}
-		else {
-			ids.push_back(m_id);
+	{
+		std::lock_guard lock(m_mtx_id);
+		while (m_id == invalid_id) {
+			m_id = dist(gen);
+			std::lock_guard lock(mtx_ids);
+			if (Room::ids.end() != std::lower_bound(Room::ids.begin(), Room::ids.end(), m_id)) {
+				m_id = invalid_id;
+			}
+			else {
+				ids.push_back(m_id);
+			}
 		}
 	}
-	std::sort(Room::ids.begin(), Room::ids.end());
+	{
+		std::lock_guard lock(mtx_ids);
+		std::sort(Room::ids.begin(), Room::ids.end());
+	}
 }
 
 Room::~Room() {
 	assert(m_client_sockets.size() == 0);
 	//end and join m_delete_thread_thread
-	m_id = Room::invalid_id;
+	{
+		std::lock_guard lock(m_mtx_id);
+		m_id = Room::invalid_id;
+	}
 	{
 		std::lock_guard lock(m_mtx_need_check);
-		m_need_check_thread = true;
+		m_flag |= f_need_check_thread;
 	}
+	m_cv_delete_thread.notify_one();
 }
 
-void Room::push_client(Client c) {
+void Room::pushClient(Client c) {
+	{
+		std::lock_guard lock(m_mtx_used);
+		m_flag |= f_used;
+	}
 	Client* ptr;
 	{
 		std::lock_guard lock(m_mtx_cs);

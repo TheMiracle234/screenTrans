@@ -29,7 +29,7 @@ namespace TM {
 
 	class Client;
 	class Server;
-	//为保证线程安全，生命周期完全串行
+	//为保证线程安全，构造、析构完全串行
 	class TM_SOCKET_API Socket
 	{
 		friend class Client;
@@ -41,7 +41,6 @@ namespace TM {
 		static inline int count = 0; // count of obj
 
 	protected:
-
 #		define TM_SOCKET_SET_ERROR(str) Socket::SetError(str, __FILE__, __LINE__)
 		static void SetError(std::string_view str, std::string_view file, int line);
 		static bool StartUp();
@@ -68,6 +67,7 @@ namespace TM {
 
 		Socket();
 		Socket(const Socket& other) = delete;
+		Socket& operator=(const Socket& other) = delete;
 		Socket(Socket&& other) noexcept : id(other.id) { std::lock_guard lock(mtx_obj_life); ++count; other.id = INVALID_SOCKET; }
 		Socket& operator=(Socket&& other) noexcept { id = other.id; other.id = INVALID_SOCKET; return *this; }
 		~Socket();

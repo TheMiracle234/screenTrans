@@ -144,6 +144,7 @@
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
     <ClCompile Include="src\miniaudio.cpp" />
+    <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="src\ScreenCapture.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_demo.cpp" />
@@ -173,6 +174,7 @@
     <ClInclude Include="include\AudioPlay.h" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
+    <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />

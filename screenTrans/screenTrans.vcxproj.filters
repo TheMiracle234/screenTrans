@@ -99,6 +99,9 @@
     <ClCompile Include="thirdparty\include\imgui\imgui_dll_context.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\Room.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ScreenCapture.h">
@@ -150,6 +153,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\ST_API.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Room.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
