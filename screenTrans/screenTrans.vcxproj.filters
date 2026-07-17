@@ -15,13 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="thirdparty\src\Socket\Client.cpp">
+    <ClCompile Include="src\Client.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="thirdparty\src\Socket\Server.cpp">
+    <ClCompile Include="src\Server.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="thirdparty\src\Socket\Socket.cpp">
+    <ClCompile Include="src\Socket.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\ScreenCapture.cpp">
@@ -156,6 +156,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\Room.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Client.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Server.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Socket.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

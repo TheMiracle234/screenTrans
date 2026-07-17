@@ -21,7 +21,6 @@
 #include <component/Image.h>
 #include <component/Button.h>
 
-
 #define USE_IMGUI 1
 
 #if	USE_IMGUI
@@ -62,8 +61,8 @@ std::atomic<bool> close_signal = false;
 std::string chosen_user; // init with self
 std::unordered_map<std::string, SOCKET> users; // init with self
 
-std::atomic<double> max_fps_data = 100.0f;
-std::atomic<double> max_fps_video = 100.0f;
+std::atomic<double> max_fps_data = 128;
+std::atomic<double> max_fps_video = 128;
 
 AudioPlay ad_player(48000, 1, 256);
 TM::Client client(Socket::TCP, Socket::IPV4);
@@ -99,7 +98,7 @@ namespace ImGui {
 //inline double duration_to_double(std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); }
 
 /*
-send: signals, id (, name (, audio_frames, pk_size, pk[n]))
+send: signals, id (, name, audio_frames(, pk_size, pk[n]))
 */
 void Receive() {
 	H264Decoder decoder;
@@ -140,6 +139,8 @@ void Receive() {
 
 		auto id = client.ReceiveParseTo<SOCKET>();
 		auto other_name = client.ReceiveString();
+		auto frames = client.ReceiveVec<int16_t>();
+		ad_player.PushFrames(*frames);
 		{
 			std::lock_guard lock(mtx_users);
 			users[*other_name] = *id;
@@ -149,8 +150,6 @@ void Receive() {
 			continue;
 		}
 
-		auto frames = client.ReceiveVec<int16_t>();
-		ad_player.PushFrames(*frames);
 
 		// each packet
 		auto pk_size = client.ReceiveParseTo<int32_t>();
@@ -188,7 +187,7 @@ void Receive() {
 }
 
 /*
-recv: id, name, choose_socket, audio_frames, pk_size, pk[n]
+recv: id, name, audio_frames, choose_socket, pk_size, pk[n]
 */
 void Send() {
 	ScreenCapture capture;
@@ -236,11 +235,11 @@ void Send() {
 
 		client.Send(client.Id());
 		client.Send(logger.name);
+		client.Send(ad_cpt.Frames());//move
 		{
 			std::lock_guard lock(mtx_users);
 			client.Send(users[chosen_user]);
 		}
-		client.Send(ad_cpt.Frames());//move
 		client.Send(pk_size);
 		for (auto& pk : packets) {
 			client.Send(pk);
@@ -424,7 +423,7 @@ void Show() {
 }
 
 void register_handle() {
-	Choice choice = -1;
+	Choice choice = choice_invalid;
 	while (choice == -1) {
 		println("choose mode");
 		println((int)choice_enter_room << ": enter a room");
@@ -509,15 +508,32 @@ err_server_status:
 	exit(1);
 }
 
+
 #ifndef NDEBUG
-#include <filesystem>
+#	include <filesystem>
 #endif//NDEBUG
 
-int main() {
-#ifndef NDEBUG
-	std::filesystem::path cwd = std::filesystem::current_path();
-	std::cout << "当前工作目录：" << cwd << std::endl;
+#ifdef NDEBUG
+	extern "C" {
+#	include <libavutil/log.h>
+	}
 #endif//NDEBUG
+
+
+int main() {
+
+
+#ifndef NDEBUG
+	{
+		std::filesystem::path cwd = std::filesystem::current_path();
+		std::cout << "当前工作目录：" << cwd << std::endl;
+	}
+#endif//NDEBUG
+
+#ifdef NDEBUG
+	av_log_set_level(AV_LOG_ERROR); // ffmpeg log
+#endif//NDEBUG
+
 
 	println("your socket: " << client.Id());
 	println("input ipv4, port, logging_name:");

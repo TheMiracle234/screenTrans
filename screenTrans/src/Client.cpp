@@ -1,4 +1,4 @@
-#include "Client.h"
+﻿#include "Client.h"
 #include <iostream>
 #include <cassert>
 
@@ -57,6 +57,7 @@ namespace TM {
 		//send length
 		msg_size len = (msg_size)data.size();
 		msg_size net_len = host_to_network(len);
+
 		ret = send_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
 		if (ret < 0) {
 			int code = WSAGetLastError();
@@ -147,8 +148,7 @@ namespace TM {
 		return total;
 	}
 
-	std::optional<std::string> Client::ReceiveString()
-	{
+	std::optional<std::string> Client::ReceiveString(){
 		auto str = Receive();
 		if (!str) {
 			return {};

@@ -1,4 +1,4 @@
-#include "H264Encoder.h"
+﻿#include "H264Encoder.h"
 
 #include <iostream>
 #include <array>

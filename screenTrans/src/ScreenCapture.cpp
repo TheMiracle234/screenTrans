@@ -1,4 +1,4 @@
-#include "ScreenCapture.h"
+Ôªø#include "ScreenCapture.h"
 
 #include <iostream>
 
@@ -11,7 +11,7 @@ namespace ST {
     bool ScreenCapture::Initialize(int monitorIndex)
     {
         ///////////////////////////////////////////////////////////
-        // ¥¥Ω®…Ë±∏
+        // ÂàõÂª∫ËÆæÂ§á
         ///////////////////////////////////////////////////////////
 
         UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
@@ -36,14 +36,12 @@ namespace ST {
         );
 
         if (FAILED(hr)) {
-
             std::cout << "D3D11CreateDevice failed\n";
-
             return false;
         }
 
         ///////////////////////////////////////////////////////////
-        // ªÒ»° adapter
+        // Ëé∑Âèñ adapter
         ///////////////////////////////////////////////////////////
 
         ComPtr<IDXGIDevice> dxgiDevice;
@@ -60,7 +58,7 @@ namespace ST {
         }
 
         ///////////////////////////////////////////////////////////
-        // ªÒ»° output
+        // Ëé∑Âèñ output
         ///////////////////////////////////////////////////////////
 
         ComPtr<IDXGIOutput> output;
@@ -78,7 +76,7 @@ namespace ST {
             return false;
 
         ///////////////////////////////////////////////////////////
-        // ¥¥Ω® duplication
+        // ÂàõÂª∫ duplication
         ///////////////////////////////////////////////////////////
 
         hr = output1->DuplicateOutput(
@@ -87,46 +85,33 @@ namespace ST {
         );
 
         if (FAILED(hr)) {
-
             std::cout << "DuplicateOutput failed\n";
-
             return false;
         }
 
         ///////////////////////////////////////////////////////////
-        // ªÒ»°∆¡ƒª≥ﬂ¥Á
+        // Ëé∑ÂèñÂ±èÂπïÂ∞∫ÂØ∏
         ///////////////////////////////////////////////////////////
 
         DXGI_OUTDUPL_DESC desc;
-
         m_duplication->GetDesc(&desc);
-
         m_width = desc.ModeDesc.Width;
-
         m_height = desc.ModeDesc.Height;
 
         ///////////////////////////////////////////////////////////
-        // ¥¥Ω® staging texture
+        // ÂàõÂª∫ staging texture
         ///////////////////////////////////////////////////////////
 
         D3D11_TEXTURE2D_DESC texDesc = {};
 
         texDesc.Width = m_width;
-
         texDesc.Height = m_height;
-
         texDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-
         texDesc.ArraySize = 1;
-
         texDesc.MipLevels = 1;
-
         texDesc.SampleDesc.Count = 1;
-
         texDesc.Usage = D3D11_USAGE_STAGING;
-
-        texDesc.CPUAccessFlags =
-            D3D11_CPU_ACCESS_READ;
+        texDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 
         hr = m_device->CreateTexture2D(
             &texDesc,
@@ -135,14 +120,12 @@ namespace ST {
         );
 
         if (FAILED(hr)) {
-
             std::cout << "CreateTexture2D failed\n";
-
             return false;
         }
 
         ///////////////////////////////////////////////////////////
-        // Ã·«∞∑÷≈‰ CPU buffer
+        // ÊèêÂâçÂàÜÈÖç CPU buffer
         ///////////////////////////////////////////////////////////
 
         m_pixelBuffer.resize(
@@ -159,7 +142,7 @@ namespace ST {
     bool ScreenCapture::CaptureFrame()
     {
         ///////////////////////////////////////////////////////////
-        // ªÒ»°œ¬“ª÷°
+        // Ëé∑Âèñ‰∏ã‰∏ÄÂ∏ß
         ///////////////////////////////////////////////////////////
 
         ComPtr<IDXGIResource> resource;
@@ -184,19 +167,16 @@ namespace ST {
         ///////////////////////////////////////////////////////////
 
         struct FrameGuard {
-
             IDXGIOutputDuplication* dupl;
-
             ~FrameGuard()
             {
                 if (dupl)
                     dupl->ReleaseFrame();
             }
-
         } guard{ m_duplication.Get() };
 
         ///////////////////////////////////////////////////////////
-        // ªÒ»° GPU texture
+        // Ëé∑Âèñ GPU texture
         ///////////////////////////////////////////////////////////
 
         ComPtr<ID3D11Texture2D> gpuTexture;
@@ -231,7 +211,7 @@ namespace ST {
             return false;
 
         ///////////////////////////////////////////////////////////
-        // øΩ±¥ ˝æ›
+        // Êã∑Ë¥ùÊï∞ÊçÆ
         ///////////////////////////////////////////////////////////
 
         uint8_t* dst = m_pixelBuffer.data();
@@ -242,11 +222,8 @@ namespace ST {
         const UINT rowBytes = m_width * 4;
 
         for (UINT y = 0; y < m_height; y++) {
-
             memcpy(dst, src, rowBytes);
-
             dst += rowBytes;
-
             src += mapped.RowPitch;
         }
 

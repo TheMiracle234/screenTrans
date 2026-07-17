@@ -8,6 +8,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <semaphore>
 
 using TM::Client;
 
@@ -21,22 +22,22 @@ private:
 private:
 	using Flag = uint8_t;
 	enum : Flag{
-		f_need_check_thread		= (Flag)1 << 0, // when client leave
-		f_used					= (Flag)1 << 1, // used to have at least one client
+		f_none = 0,
+		f_used = (Flag)1 << 0, // used to have at least one client
 	};
-	Flag m_flag;
+	Flag m_flag = f_none;
 	uint32_t m_id = invalid_id;
 	std::optional<uint32_t> m_passwd = std::nullopt;
+	std::counting_semaphore<> m_cs_dead_threads{0};
+	std::jthread m_delete_thread_thread;
 	std::shared_mutex m_mtx_cs;
 	std::shared_mutex m_mutex_choices;
-	std::jthread m_delete_thread_thread;
+	std::vector<std::unique_ptr<Client>> m_client_sockets;
+	std::vector<std::jthread> m_clients_threads;
 	std::mutex m_mtx_id;
 	std::mutex m_mtx_threads;
 	std::mutex m_mtx_used;
 	std::mutex m_mtx_need_check;
-	std::vector<std::unique_ptr<Client>> m_client_sockets;
-	std::vector<std::jthread> m_clients_threads;
-	std::condition_variable m_cv_delete_thread;
 	std::unordered_map<SOCKET, SOCKET> m_choices_of; // <socket of client(in server), client socket choice>
 public:
 	Room(const std::optional<uint32_t>& passwd = {});

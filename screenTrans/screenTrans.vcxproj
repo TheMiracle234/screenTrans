@@ -154,9 +154,9 @@
     <ClCompile Include="thirdparty\include\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_tables.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="thirdparty\src\Socket\Client.cpp" />
-    <ClCompile Include="thirdparty\src\Socket\Server.cpp" />
-    <ClCompile Include="thirdparty\src\Socket\Socket.cpp" />
+    <ClCompile Include="src\Client.cpp" />
+    <ClCompile Include="src\Server.cpp" />
+    <ClCompile Include="src\Socket.cpp" />
     <ClCompile Include="thirdparty\src\tmui\Buffer.cpp" />
     <ClCompile Include="thirdparty\src\tmui\Rectangle.cpp" />
     <ClCompile Include="thirdparty\src\tmui\Component.cpp" />
@@ -172,10 +172,13 @@
   <ItemGroup>
     <ClInclude Include="include\AudioCapture.h" />
     <ClInclude Include="include\AudioPlay.h" />
+    <ClInclude Include="include\Client.h" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />
+    <ClInclude Include="include\Server.h" />
+    <ClInclude Include="include\Socket.h" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />
     <ClInclude Include="include\st_util.h" />

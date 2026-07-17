@@ -22,8 +22,8 @@
 
 using TM::Server, TM::Client;
 
-// since in vector there is always copy or move and Room is so big that even move is slow(which we don't allow), so we use unique_ptr as a fast move container
 std::mutex mtx_rooms;
+// since in vector there is always copy or move and Room is so big that even move is slow(which we don't allow), so we use unique_ptr as a fast move container
 std::vector<std::unique_ptr<Room>> rooms;
 
 static void register_handle(std::optional<Client> c) {
@@ -34,14 +34,16 @@ static void register_handle(std::optional<Client> c) {
 
 	// choice
 	auto choice = c->ReceiveParseTo<Choice>();
-	if (!choice)
+	if (!choice) {
 		goto err_interrupted;
+	}
 
 	switch (*choice) {
 	case choice_make_room: {
 		auto passwd = c->ReceiveParseTo<uint32_t>();
-		if (!passwd.has_value())
+		if (!passwd.has_value()) {
 			goto err_interrupted;
+		}
 
 		auto room = std::make_unique<Room>(*passwd);
 		c->Send(room->id());
@@ -61,8 +63,9 @@ static void register_handle(std::optional<Client> c) {
 		for (;;) {
 			auto id = c->ReceiveParseTo<uint32_t>();
 			auto passwd = c->ReceiveParseTo<uint32_t>();
-			if (!id)
+			if (!id) {
 				goto err_interrupted;
+			}
 
 			// once client gets room, we can't it destruct in the middle
 			std::lock_guard lock(mtx_rooms);
@@ -75,8 +78,9 @@ static void register_handle(std::optional<Client> c) {
 				c->Send(true);
 			}
 
-			if (!passwd)
+			if (!passwd) {
 				goto err_interrupted;
+			}
 			if (passwd != (*room)->passwd()) {
 				c->Send(false); // failed
 				continue;
@@ -86,6 +90,7 @@ static void register_handle(std::optional<Client> c) {
 			}
 
 			(*room)->pushClient(std::move(*c));
+			break;
 		}
 	} break;
 	}
@@ -115,9 +120,6 @@ void check_empty_rooms() {
 			});
 		}
 		if (record.empty()) {
-#ifndef NDEBUG
-			println("no room erased in this loop");
-#endif//NDEBUG
 			continue;
 		}
 		println("erased rooms in this loop:");

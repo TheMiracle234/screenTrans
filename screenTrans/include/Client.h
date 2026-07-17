@@ -11,11 +11,15 @@
 #include <bit>
 #include <algorithm>
 #include <execution>
+#include <mutex>
 
 namespace TM {
 
+    // enum is not included, because 
     template<typename T>
-    requires std::is_integral_v<T> || std::is_floating_point_v<T>
+    concept CNumberType = std::is_integral_v<T> || std::is_floating_point_v<T>;
+
+    template<CNumberType T>
     [[nodiscard]] inline constexpr T byteswap(T value) noexcept
     {        
         if constexpr (sizeof(T) == 1)
@@ -44,8 +48,7 @@ namespace TM {
     // host <-> network
     ///////////////////////////////////////////////////////////
 
-    template<typename T>
-    requires std::is_integral_v<T> || std::is_floating_point_v<T>
+    template<CNumberType T>
     [[nodiscard]] inline constexpr T host_to_network(T value) noexcept
     {
         if constexpr (std::endian::native == std::endian::little)
@@ -58,8 +61,7 @@ namespace TM {
         }
     }
 
-    template<typename T>
-    requires std::is_integral_v<T> || std::is_floating_point_v<T>
+    template<CNumberType T>
     [[nodiscard]] inline constexpr T network_to_host(T value) noexcept
     {
         if constexpr (std::endian::native == std::endian::little)
@@ -91,6 +93,9 @@ namespace TM {
 	private:
 		Socket::Ip ip_version;
         Socket skt;
+#ifndef TM_CLIENT_NO_MUTEX
+        std::mutex m_mtx;
+#endif//TM_CLIENT_NO_MUTEX
 
 		bool Init(Socket::Protocol protocol, Socket::Ip ip);
 		msg_size send_all(SOCKET s, const char* buf, msg_size len);
@@ -105,6 +110,10 @@ namespace TM {
         Client(Client&& other) noexcept : skt(std::move(other.skt)), ip_version(other.ip_version) {}
 		bool ConnectTo(const std::string& ip, uint32_t port);
 		SOCKET Id() { return skt.id; }
+#ifndef TM_CLIENT_NO_MUTEX
+        std::mutex& mutex() { return m_mtx; }
+#endif//TM_CLIENT_NO_MUTEX
+
         void Close() { skt.Close(); }
         bool Closed() { return skt.Closed(); }
 
@@ -115,15 +124,14 @@ namespace TM {
 
         //auto hton, so data inside will be changed, so copy or move
         template<typename vec>
-        requires is_vector_v<vec>
+        requires is_vector_v<vec> && CNumberType<typename vec::value_type>
         bool Send(vec data) {
             using elem_t = typename vec::value_type;
             std::for_each(data.begin(), data.end(), [](elem_t& elem) { elem = host_to_network(elem); });
             return Send(data.data(), (msg_size)(sizeof(elem_t) * data.size()));
         }
 
-		template<typename T>
-        requires std::is_integral_v<T> || std::is_floating_point_v<T>
+		template<CNumberType T>
         bool Send(const T data) {
             T net_data = host_to_network(data);
 			return Send(std::vector<uint8_t>(
@@ -135,8 +143,7 @@ namespace TM {
 
         [[nodiscard]] std::optional<std::vector<uint8_t>> Receive();
         
-        template<typename T>
-        requires std::is_integral_v<T> || std::is_floating_point_v<T>
+        template<CNumberType T>
         [[nodiscard]] std::optional<T> ReceiveParseTo() {
             auto data = this->Receive();
             if (!data || data->size() != sizeof(T)) {
@@ -149,8 +156,7 @@ namespace TM {
 		}
 
         // auto ntoh
-        template<typename T>
-        requires std::is_integral_v<T> || std::is_floating_point_v<T>
+        template<CNumberType T>
         [[nodiscard]] std::optional<std::vector<T>> ReceiveVec() {
             auto bytes = Receive();
             if (!bytes || bytes->size() % sizeof(T) != 0) {
@@ -163,7 +169,7 @@ namespace TM {
             return res;
         }
 
-		// make sure the msg send to you is a string(end by \0)
+		// make sure the msg sent to you is a string(end by \0)
         [[nodiscard]] std::optional<std::string> ReceiveString();
 	};
 };
