@@ -48,7 +48,7 @@ I'm not familiar with compiling `.dll`, so I first compile screenTrans to a `.li
 
 ### screenTrans:
 
-https://github.com/TheMiracle234/screenTrans
+https://github.com/TheMiracle234/screenTrans/commit/35c6464c91c1d6ef06f7e73a46805538e7acf9cd
 
 ### FFmpeg:
 
