@@ -181,7 +181,6 @@
     <ClInclude Include="include\Socket.h" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />
-    <ClInclude Include="include\st_util.h" />
     <ClInclude Include="thirdparty\include\imgui\imconfig.h" />
     <ClInclude Include="thirdparty\include\imgui\imgui.h" />
     <ClInclude Include="thirdparty\include\imgui\imgui_impl_glfw.h" />

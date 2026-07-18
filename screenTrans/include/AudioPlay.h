@@ -1,3 +1,21 @@
+ï»¿/*
+    screenTrans - online meeting app
+    Copyright (C) 2026 Yuan Aowei
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #pragma once
 
 #include <miniaudio.h>
@@ -14,7 +32,7 @@ namespace ST {
     class ST_API AudioPlay
     {
     public:
-        static inline float DELAY_SEC = 0.2f;  // ÔÊĞí×î´ó»º³å 200ms µÄÊı¾İ£¨½»´í¸ñÊ½£¬×Ü²ÉÑùÊı = ²ÉÑùÂÊ * Í¨µÀÊı * DELAY_SEC£©
+        static inline float DELAY_SEC = 0.2f;  // å…è®¸æœ€å¤§ç¼“å†² 200ms çš„æ•°æ®ï¼ˆäº¤é”™æ ¼å¼ï¼Œæ€»é‡‡æ ·æ•° = é‡‡æ ·ç‡ * é€šé“æ•° * DELAY_SECï¼‰
 
         AudioPlay(
             uint32_t sampleRate = 48000,
@@ -34,12 +52,12 @@ namespace ST {
         void Stop();
         bool IsRunning() const { return m_running; }
 
-        // Ïò²¥·Å¶ÓÁĞÌí¼Ó PCM Êı¾İ£¨int16_t ½»´í¸ñÊ½£©
-        // frameCount: Ã¿¸öÍ¨µÀµÄ²ÉÑùÊı£¬×ÜÊı¾İ³¤¶ÈÎª frameCount * channels
+        // å‘æ’­æ”¾é˜Ÿåˆ—æ·»åŠ  PCM æ•°æ®ï¼ˆint16_t äº¤é”™æ ¼å¼ï¼‰
+        // frameCount: æ¯ä¸ªé€šé“çš„é‡‡æ ·æ•°ï¼Œæ€»æ•°æ®é•¿åº¦ä¸º frameCount * channels
         void PushFrames(const std::vector<int16_t>& data);
         void PushFrames(std::vector<int16_t>&& data);
 
-        // Çå¿Õ²¥·Å¶ÓÁĞÖĞÉĞÎ´²¥·ÅµÄÊı¾İ
+        // æ¸…ç©ºæ’­æ”¾é˜Ÿåˆ—ä¸­å°šæœªæ’­æ”¾çš„æ•°æ®
         void Clear();
 
     private:
@@ -65,9 +83,9 @@ namespace ST {
         uint32_t m_channels = 1;
         ma_device m_device{};
 
-        // ²¥·Å»º³åÇø£ºÊ¹ÓÃ»·ĞÎ»º³åÇø»ò¼òµ¥ vector + ÓÎ±ê
+        // æ’­æ”¾ç¼“å†²åŒºï¼šä½¿ç”¨ç¯å½¢ç¼“å†²åŒºæˆ–ç®€å• vector + æ¸¸æ ‡
         std::vector<int16_t> m_buffer;
-        size_t m_readPos = 0;          // ÏÂ´Î¶ÁÈ¡µÄÎ»ÖÃ£¨²ÉÑùÊı£©
+        size_t m_readPos = 0;          // ä¸‹æ¬¡è¯»å–çš„ä½ç½®ï¼ˆé‡‡æ ·æ•°ï¼‰
         std::mutex m_mtx_buffer;
     };
 

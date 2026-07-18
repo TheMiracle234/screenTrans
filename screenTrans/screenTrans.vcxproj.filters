@@ -107,9 +107,6 @@
     <ClInclude Include="include\ScreenCapture.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\st_util.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\H264Encoder.h">
       <Filter>头文件</Filter>
     </ClInclude>
