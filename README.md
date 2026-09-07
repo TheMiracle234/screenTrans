@@ -40,9 +40,7 @@ The `msvc_run_time.zip` contains files you may not actually need. Consider these
 
 ## Compile by yourself
 
-notice that I didn't put source code of miniaudio and FFmpeg here, you need to download them seperatly. For the reason, include path in `.sln` is absolute path. So you need to reset include path of miniaudio and FFmpeg to your local path.
-
-I'm not familiar with compiling `.dll`, so I first compile screenTrans to a `.lib`, then compile ScreenTrans_Client and ScreenTrans_Server using this '.lib'.
+I'm not familiar with compiling `.dll`, so I first compile screenTrans to a `.lib`, then compile ScreenTrans_Client and ScreenTrans_Server using this `.lib`.
 
 ## Source Code
 
