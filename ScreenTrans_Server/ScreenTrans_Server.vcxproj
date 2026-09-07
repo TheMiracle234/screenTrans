@@ -111,7 +111,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\lib;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)/screenTrans/thirdparty/lib/ffmpeg;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib</AdditionalLibraryDirectories>
       <AdditionalDependencies>screenTrans.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -131,7 +131,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\lib;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)/screenTrans/thirdparty/lib/ffmpeg;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib</AdditionalLibraryDirectories>
       <AdditionalDependencies>screenTrans.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

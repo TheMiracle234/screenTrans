@@ -112,7 +112,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <AdditionalDependencies>freetype.lib;swscale.lib;avutil.lib;avcodec.lib;opengl32.lib;glfw3dll.lib;glew32s.lib;dxguid.lib;d3d12.lib;dxgi.lib;D3DCompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\lib;thirdparty/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>thirdparty/lib/ffmpeg;thirdparty/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -135,7 +135,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <AdditionalDependencies>freetype.lib;swscale.lib;avutil.lib;avcodec.lib;opengl32.lib;glfw3dll.lib;glew32s.lib;dxguid.lib;d3d12.lib;dxgi.lib;D3DCompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\lib;thirdparty/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>thirdparty/lib/ffmpeg;thirdparty/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
