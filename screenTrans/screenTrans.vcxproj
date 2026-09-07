@@ -105,7 +105,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>true</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -126,7 +126,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>true</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>

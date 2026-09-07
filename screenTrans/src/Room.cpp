@@ -83,7 +83,7 @@ void Room::sendMsg(Client* client, Room* room) {
 			}
 		}
 		{
-			std::shared_lock lock(room->m_mtx_cs);
+			std::shared_lock lock(room->m_mtx_client_sockets);
 			std::for_each(std::execution::par, room->m_client_sockets.begin(), room->m_client_sockets.end(), [&](std::unique_ptr<Client>& c) {
 				std::lock_guard lock(c->mutex());
 
@@ -133,8 +133,7 @@ void Room::deleteThread(Room* room) {
 				break;
 		}
 		{
-			std::lock_guard lock_cs(room->m_mtx_cs);
-			std::lock_guard lock_threads(room->m_mtx_threads);
+			std::lock_guard lock_cs(room->m_mtx_client_sockets);
 			for (size_t i = 0; i < room->m_client_sockets.size(); ) {
 				if (room->m_client_sockets[i]->Closed()) {
 					room->m_clients_threads.erase(room->m_clients_threads.begin() + i);
@@ -189,15 +188,9 @@ void Room::pushClient(Client c) {
 		std::lock_guard lock(m_mtx_used);
 		m_flag |= f_used;
 	}
-	Client* ptr;
 	{
-		std::lock_guard lock(m_mtx_cs);
-		auto tmp = std::make_unique<Client>(std::move(c));
-		ptr = tmp.get();
-		m_client_sockets.emplace_back(std::move(tmp));
-	}
-	{
-		std::lock_guard lock(m_mtx_threads);
-		m_clients_threads.emplace_back(std::jthread(sendMsg, ptr, this));
+		std::lock_guard lock(m_mtx_client_sockets);
+		m_client_sockets.emplace_back(std::make_unique<Client>(std::move(c)));
+		m_clients_threads.emplace_back(std::jthread(sendMsg, m_client_sockets.back().get(), this));
 	}
 }

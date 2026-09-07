@@ -48,12 +48,11 @@ private:
 	std::optional<uint32_t> m_passwd = std::nullopt;
 	std::counting_semaphore<> m_cs_dead_threads{0};
 	std::jthread m_delete_thread_thread;
-	std::shared_mutex m_mtx_cs;
+	std::shared_mutex m_mtx_client_sockets;
 	std::shared_mutex m_mutex_choices;
 	std::vector<std::unique_ptr<Client>> m_client_sockets;
 	std::vector<std::jthread> m_clients_threads;
 	std::mutex m_mtx_id;
-	std::mutex m_mtx_threads;
 	std::mutex m_mtx_used;
 	std::mutex m_mtx_need_check;
 	std::unordered_map<SOCKET, SOCKET> m_choices_of; // <socket of client(in server), client socket choice>
@@ -65,7 +64,7 @@ public:
 	Room& operator=(const Room&) = delete;
 	Room& operator=(Room&&) noexcept = delete;
 	bool used() { std::lock_guard lock(m_mtx_used); return m_flag & f_used; }
-	bool empty() { std::lock_guard lock(m_mtx_cs); return m_client_sockets.size() == 0; }
+	bool empty() { std::lock_guard lock(m_mtx_client_sockets); return m_client_sockets.size() == 0; }
 	uint32_t id() { std::lock_guard lock(m_mtx_id); return m_id; }
 	std::optional<uint32_t>& passwd() { return m_passwd; }
 	std::unique_ptr<Client>& client(size_t i) { return m_client_sockets[i]; }

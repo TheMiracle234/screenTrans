@@ -109,7 +109,7 @@
       <PreprocessorDefinitions>GLEW_STATIC;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,7 +127,7 @@
       <PreprocessorDefinitions>GLEW_STATIC;NDEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\visual studio\CPP_lib\src\miniaudio;D:\visual studio\CPP_lib\lib\ffmpeg-8.1.1-full_build-shared\include;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>
