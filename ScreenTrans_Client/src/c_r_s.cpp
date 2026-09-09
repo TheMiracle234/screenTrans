@@ -1,21 +1,5 @@
-﻿/*
-	screenTrans - online meeting app
-	Copyright (C) 2026 Yuan Aowei
-
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
-
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Yuan Aowei
 #include <Client.h>
 #include <Socket.h>
 #include <H264Encoder.h>
@@ -35,9 +19,16 @@
 #include <unordered_map>
 #include <chrono>
 
-#include <window/Window.h>
-#include <component/Image.h>
-#include <component/Button.h>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <gl/Window.h>
+#include <gl/Shader.h>
+#include <gl/VertexArray.h>
+#include <gl/VertexBuffer.h>
+#include <gl/IndexBuffer.h>
+#include <gl/Render.h>
+#include <gl/Texture.h>
 
 #define USE_IMGUI 1
 
@@ -56,7 +47,9 @@
 #define print(x) std::cout<< x
 #define loop for(;;)
 
-using TM::Window, TM::Image;
+#undef min
+#undef max
+
 using TM::Client, TM::Socket;
 using ST::H264Encoder, ST::H264Decoder, ST::AudioPlay, ST::AudioCapture, ST::ScreenCapture;
 
@@ -84,7 +77,9 @@ std::atomic<double> max_fps_video = 128;
 
 AudioPlay ad_player(48000, 1, 256);
 TM::Client client(Socket::TCP, Socket::IPV4);
+std::unique_ptr<gl::Window> window{};
 
+#if USE_IMGUI
 namespace ImGui {
 	void DockingSpace() {
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -92,7 +87,7 @@ namespace ImGui {
 		ImGui::SetNextWindowSize(viewport->WorkSize);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		static constexpr ImGuiWindowFlags dock_flags = ImGuiWindowFlags_NoDocking |
+		constexpr ImGuiWindowFlags dock_flags = ImGuiWindowFlags_NoDocking |
 			ImGuiWindowFlags_NoTitleBar |
 			ImGuiWindowFlags_NoCollapse |
 			ImGuiWindowFlags_NoResize |
@@ -111,6 +106,7 @@ namespace ImGui {
 		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 	}
 }
+#endif
 
 //inline std::chrono::steady_clock::time_point now() { return std::chrono::steady_clock::now(); }
 //inline double duration_to_double(std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); }
@@ -266,8 +262,72 @@ void Send() {
 	}
 }
 
+constexpr const char* vs = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aTexCoords;
+out vec2 texCoords;
+void main(){
+	texCoords = aTexCoords;
+	gl_Position = vec4(aPos.x, -aPos.y, aPos.z, 1.0f);
+}
+)";
+constexpr const char* fs = R"(
+#version 330 core
+in vec2 texCoords;
+uniform sampler2D sampler;
+out vec4 FragColor;
+void main(){
+	FragColor = texture(sampler, texCoords);
+}
+)";
+
+struct imgStruct {
+	float pos[3];
+	float texCoords[2];
+};
+
 void Show() {
-	Window window(800, 600, ((char*)u8"screenTrans: " + logger.name));
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	window = std::make_unique<gl::Window>(800, 600, glm::ivec2{ 200, 100 }, "client");
+	glfwMakeContextCurrent(window->m_get);
+	GLASSERTK(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
+	glEnable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* , int xpos, int ypos) {
+		window->m_pos = glm::ivec2{ xpos, ypos };
+		});
+	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* , int width, int height) {
+		glViewport(0, 0, width, height);
+		window->setSize(width, height);
+		window->setViewport({ 0,0,width, height });
+		});
+
+
+	gl::Shader shader{ vs, fs };
+	shader.use();
+	shader.setUniform("sampler", 0);
+	gl::Texture2D img(1, 1, {1}, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA);
+	img.bindTo(0);
+	gl::VertexBufferLayout layoutImg;
+	layoutImg.push<float>(3);
+	layoutImg.push<float>(2);
+	gl::VertexArray vaoImg;
+	std::vector<imgStruct> verticesImg{
+		{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+		{{ 1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+		{{-1.0f,  1.0f, 0.0f}, {0.0f, 1.0f}},
+		{{ 1.0f,  1.0f, 0.0f}, {1.0f, 1.0f}},
+	};
+	gl::VertexBuffer vboImg(layoutImg, gl::toVector<uint8_t>(verticesImg), gl::BufferUsage::Static);
+	gl::IndexBuffer eboImg({0,1,2,1,2,3}, gl::BufferUsage::Static);
+	vaoImg.bindVboAllAttribs({ 0,1 }, vboImg);
+
 
 #if USE_IMGUI
 	float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor()); // Valid on GLFW 3.3+ only
@@ -299,31 +359,26 @@ void Show() {
 	//io.Fonts->AddFontFromFileTTF("font/msyh.ttc", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
 
 	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForOpenGL(window.get().get(), true);
+	ImGui_ImplGlfw_InitForOpenGL(window->m_get, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 #endif
 
 
 	struct swapBuffers{
-		Window* window;
-		swapBuffers(Window& w): window(&w) {}
 		~swapBuffers() {
 			window->swapBuffers();
 		}
 	};
 
-	//always keep this
-	auto unused = std::make_unique<TM::Rectangle>(10, 10, 0, 0, window);
-	//always keep this
+	//auto img = std::make_unique<Image>(window, 0, 0, std::vector<uint8_t>{ 0, 0, 0, 0 }, 1, 1, 800, 600);
 
-	auto img = std::make_unique<Image>(window, 0, 0, std::vector<uint8_t>{ 0, 0, 0, 0 }, 1, 1, 800, 600);
 
 	double d_time = 0;
 	float fps = 0;
 	bool show_settings = true;
 
 	auto last_time = std::chrono::steady_clock::now();
-	while (!window.closed()) {
+	while (!window->shouldClose()) {
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>(1.0 / max_fps_video.load(std::memory_order_acquire))
 		);
@@ -337,6 +392,8 @@ void Show() {
 				break;
 		}
 
+		glfwPollEvents();
+
 #if USE_IMGUI
 		// Start the Dear ImGui frame
 		ImGui_ImplOpenGL3_NewFrame();
@@ -344,10 +401,13 @@ void Show() {
 		ImGui::NewFrame();
 #endif
 
-		window.clear();
-		window.renderComps();
+		glClearColor(0.1f, 0.1f, 0.1f, 0.1f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		shader.use();
+		vaoImg.bind();
+		gl::draw(eboImg, gl::DrawMode::TRIANGLES);
 
-		swapBuffers swap_buffers(window); // prevent continue swapbuffers
+		swapBuffers swap_buffers; // prevent continue swapbuffers
 
 #if USE_IMGUI
 		ImGui::DockingSpace();
@@ -402,11 +462,11 @@ void Show() {
 		// Rendering
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		d_time += 1 / (double)ImGui::GetIO().Framerate;
 #endif
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_TIME));
 
-		d_time += window.deltaTime;
 
 		ST::DecodedFrame frame;
 		{
@@ -427,8 +487,8 @@ void Show() {
 			continue;
 		}
 
-		img->resize(window.width, window.height);
-		img->resetData(data, width, height);
+		img.resize(width, height, 4);
+		img.resetData(data, 4);
 	}
 
 #if USE_IMGUI
@@ -539,7 +599,7 @@ err_server_status:
 
 
 int main() {
-
+	gl::GlfwInitGuard glfwInitGuard;
 
 #ifndef NDEBUG
 	{

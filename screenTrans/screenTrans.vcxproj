@@ -105,7 +105,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>true</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -126,7 +126,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>true</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>
@@ -143,9 +143,17 @@
     <ClCompile Include="src\AudioPlay.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
-    <ClCompile Include="src\miniaudio.cpp" />
     <ClCompile Include="src\Room.cpp" />
+    <ClCompile Include="thirdparty\include\miniaudio\miniaudio.cpp" />
     <ClCompile Include="src\ScreenCapture.cpp" />
+    <ClCompile Include="thirdparty\include\glad\glad.c" />
+    <ClCompile Include="src\gl\IndexBuffer.cpp" />
+    <ClCompile Include="src\gl\Render.cpp" />
+    <ClCompile Include="src\gl\Shader.cpp" />
+    <ClCompile Include="src\gl\Texture.cpp" />
+    <ClCompile Include="src\gl\VertexArray.cpp" />
+    <ClCompile Include="src\gl\VertexBuffer.cpp" />
+    <ClCompile Include="src\gl\Window.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_demo.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_dll_context.cpp" />
@@ -157,22 +165,22 @@
     <ClCompile Include="src\Client.cpp" />
     <ClCompile Include="src\Server.cpp" />
     <ClCompile Include="src\Socket.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Buffer.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Rectangle.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Component.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Data.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\debug.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Event.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Image.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Shader.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\stb_image.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Text.cpp" />
-    <ClCompile Include="thirdparty\src\tmui\Window.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\AudioCapture.h" />
     <ClInclude Include="include\AudioPlay.h" />
     <ClInclude Include="include\Client.h" />
+    <ClInclude Include="include\gl\Buffer.h" />
+    <ClInclude Include="include\gl\debug.h" />
+    <ClInclude Include="include\gl\IndexBuffer.h" />
+    <ClInclude Include="include\gl\Render.h" />
+    <ClInclude Include="include\gl\Shader.h" />
+    <ClInclude Include="include\gl\Texture.h" />
+    <ClInclude Include="include\gl\util.h" />
+    <ClInclude Include="include\gl\VertexArray.h" />
+    <ClInclude Include="include\gl\VertexBuffer.h" />
+    <ClInclude Include="include\gl\VertexBufferLayout.h" />
+    <ClInclude Include="include\gl\Window.h" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
     <ClInclude Include="include\Room.h" />
@@ -190,6 +198,7 @@
     <ClInclude Include="thirdparty\include\imgui\imstb_rectpack.h" />
     <ClInclude Include="thirdparty\include\imgui\imstb_textedit.h" />
     <ClInclude Include="thirdparty\include\imgui\imstb_truetype.h" />
+    <ClInclude Include="thirdparty\include\miniaudio\miniaudio.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
