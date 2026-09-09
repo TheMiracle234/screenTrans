@@ -1,5 +1,15 @@
 ﻿#include <App.hpp>
 
+#ifndef NDEBUG
+#	include <filesystem>
+#endif//NDEBUG
+
+#ifdef NDEBUG
+extern "C" {
+#	include <libavutil/log.h>
+}
+#endif//NDEBUG
+
 #if USE_IMGUI
 namespace ImGui {
 	void DockingSpace() {
@@ -31,6 +41,21 @@ namespace ImGui {
 
 //inline std::chrono::steady_clock::time_point now() { return std::chrono::steady_clock::now(); }
 //inline double duration_to_double(std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); }
+
+std::unique_ptr<gl::Window> App::makeWindow() {
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	auto res = std::make_unique<gl::Window>(800, 600, glm::ivec2{ 200, 100 }, "client");
+	glfwMakeContextCurrent(res->m_get);
+	GLASSERTK(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
+	glEnable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	return res;
+}
 
 /*
 send: signals, id (, name, audio_frames(, pk_size, pk[n]))
@@ -209,17 +234,7 @@ struct imgStruct {
 };
 
 void App::Show() {
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	window = std::make_unique<gl::Window>(800, 600, glm::ivec2{ 200, 100 }, "client");
-	glfwMakeContextCurrent(window->m_get);
-	GLASSERTK(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
-	glEnable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LEQUAL);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	makeWindow();
 	glfwSetWindowUserPointer(window->m_get, this);
 	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
@@ -508,4 +523,49 @@ err_server_status:
 	println("server status error");
 	system("pause");
 	exit(1);
+}
+
+void App::run() {
+#ifndef NDEBUG
+	{
+		std::filesystem::path cwd = std::filesystem::current_path();
+		std::cout << "当前工作目录：" << cwd << std::endl;
+	}
+#endif//NDEBUG
+
+#ifdef NDEBUG
+	av_log_set_level(AV_LOG_ERROR); // ffmpeg log
+#endif//NDEBUG
+
+
+	println("your socket: " << client.Id());
+	println("input ipv4, port, logging_name:");
+	{
+		std::string ip;
+		uint32_t port;
+		std::cin >> ip >> port >> logger.name;
+		client.ConnectTo(ip.c_str(), port);
+		println("connected to server successfully");
+	}
+
+	register_handle();
+	println("register successfully");
+
+	chosen_user = logger.name;
+	users[chosen_user] = client.Id();
+
+	std::jthread send_thread{ &App::Send, this };
+	std::jthread recv_thread{ &App::Receive, this };
+	Show();
+
+	close_signal = true;
+}
+
+App::App() {
+
+}
+
+int main() {
+	App app{};
+	app.run();
 }

@@ -54,7 +54,7 @@
 using TM::Client, TM::Socket;
 using ST::H264Encoder, ST::H264Decoder, ST::AudioPlay, ST::AudioCapture, ST::ScreenCapture;
 
-static inline constexpr int SLEEP_TIME = 5;
+static inline constexpr int SLEEP_TIME = 0;
 static inline constexpr size_t MAX_VIDEO_FRAMES = 10;
 static inline constexpr size_t KEEP_FRAMES = 4;
 
@@ -92,6 +92,9 @@ void main(){
 	FragColor = texture(sampler, texCoords);
 }
 )";
+
+	static std::unique_ptr<gl::Window> makeWindow();
+
 	/* send: signals, id (, name, audio_frames(, pk_size, pk[n])) */
 	void Receive();
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
@@ -100,7 +103,7 @@ void main(){
 	void register_handle();
 public:
 	gl::GlfwInitGuard glfwInitGuard;
-	std::unique_ptr<gl::Window> window{};
+	std::unique_ptr<gl::Window> window{ };
 
 	struct {
 		std::string name;
@@ -123,5 +126,6 @@ public:
 	AudioPlay ad_player{ 48000, 1, 256 };
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
-
+	App();
+	void run();
 };
