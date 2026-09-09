@@ -1,4 +1,6 @@
-﻿#include <App.hpp>
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Yuan Aowei
+#include <App.hpp>
 
 #ifndef NDEBUG
 #	include <filesystem>
