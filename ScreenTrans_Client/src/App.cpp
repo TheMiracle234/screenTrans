@@ -234,7 +234,7 @@ struct imgStruct {
 };
 
 void App::Show() {
-	makeWindow();
+	window = makeWindow();
 	glfwSetWindowUserPointer(window->m_get, this);
 	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
