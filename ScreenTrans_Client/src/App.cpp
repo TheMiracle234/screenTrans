@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
+#define _CRT_SECURE_NO_WARNINGS
 #include <App.hpp>
 
 #ifndef NDEBUG
@@ -236,16 +237,15 @@ struct imgStruct {
 };
 
 void App::Show() {
-	window = makeWindow();
 	glfwSetWindowUserPointer(window->m_get, this);
 	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
-		user->window->m_pos = glm::ivec2{ xpos, ypos };
+		user->window->updatePos({ xpos, ypos });
 		});
 	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
 		glViewport(0, 0, width, height);
-		user->window->setSize(width, height);
+		user->window->updatePos({ width, height });
 		user->window->setViewport({ 0,0,width, height });
 		});
 
@@ -271,37 +271,7 @@ void App::Show() {
 
 
 #if USE_IMGUI
-	float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor()); // Valid on GLFW 3.3+ only
-	// Setup Dear ImGui context
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	//SetImGuiContext(ImGui::GetCurrentContext());
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags =
-		//ImGuiConfigFlags_ViewportsEnable |
-		ImGuiConfigFlags_DockingEnable |
-		ImGuiConfigFlags_NavEnableKeyboard |     // Enable Keyboard Controls
-		ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-
-	// Setup Dear ImGui style
-	ImGui::StyleColorsDark();
-	//ImGui::StyleColorsLight();
-
-	// Setup scaling
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
-	style.FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
-	const auto DEFAULT_BK_COLOR = style.Colors[ImGuiCol_WindowBg];
-
-	//io.Fonts->Clear();
-	io.Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
-	//io.Fonts->Build();
-	//io.Fonts->AddFontFromFileTTF("font/msyh.ttc", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
-
-	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForOpenGL(window->m_get, true);
-	ImGui_ImplOpenGL3_Init("#version 330");
+	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
 #endif
 
 
@@ -310,8 +280,6 @@ void App::Show() {
 		swapBuffers(gl::Window* tar) : window{ tar } {}
 		~swapBuffers() { window->swapBuffers(); }
 	};
-
-	//auto img = std::make_unique<Image>(window, 0, 0, std::vector<uint8_t>{ 0, 0, 0, 0 }, 1, 1, 800, 600);
 
 
 	double d_time = 0;
@@ -392,10 +360,10 @@ void App::Show() {
 
 
 		// ============ main window ============ 
-		style.Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
+		style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
 		ImGui::Begin("main");
 		ImGui::End();// main
-		style.Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
+		style->Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
 		// ============ main window ============ 
 
 		ImGui::End();//docking end
@@ -432,13 +400,6 @@ void App::Show() {
 		img.resetData(data, 4);
 	}
 
-#if USE_IMGUI
-	// Cleanup
-	ImGui::DestroyPlatformWindows();
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-#endif
 }
 
 void App::register_handle() {
@@ -527,6 +488,51 @@ err_server_status:
 	exit(1);
 }
 
+void App::connectInput(char* ipv4, char* port, uint32_t& port_num, char* name, size_t buf_size, bool not_first) {
+	loop {
+		if (window->shouldClose()) {
+			exit(1);
+		}
+		glfwPollEvents();
+#if USE_IMGUI
+		// Start the Dear ImGui frame
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+#endif
+
+		glClearColor(0.1f, 0.1f, 0.1f, 0.1f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+#if USE_IMGUI
+		ImGui::DockingSpace();
+
+
+		ImGui::Begin((char*)u8"connect");
+		//ImGui::ShowDemoWindow();
+		ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
+		ImGui::InputText("target_ipv4", ipv4, buf_size);
+		ImGui::InputText("target_port", port, buf_size);
+		ImGui::InputText("your_name", name, buf_size, ImGuiInputTextFlags_CharsNoBlank);
+		if (not_first) {
+			ImGui::Text("invalid or wrong input exist");
+		}
+		bool connect = ImGui::Button("connect");
+		bool port_ok = sscanf(port, "%u", &port_num) == 1;
+		if (!port_ok) { ImGui::Text("%s: port invalid-should be a unsigned number", port); }
+		ImGui::End();// settings
+
+		ImGui::End();//docking end
+
+		// Rendering
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#endif	
+		window->swapBuffers();
+		if (connect && port_ok) { break; }
+	}
+}
+
 void App::run() {
 #ifndef NDEBUG
 	{
@@ -540,14 +546,23 @@ void App::run() {
 #endif//NDEBUG
 
 
-	println("your socket: " << client.Id());
-	println("input ipv4, port, logging_name:");
-	{
-		std::string ip;
-		uint32_t port;
-		std::cin >> ip >> port >> logger.name;
-		client.ConnectTo(ip.c_str(), port);
-		println("connected to server successfully");
+	constexpr size_t buf_size = 128;
+	char ipv4[buf_size]{};
+	char port[buf_size]{};
+	char name[buf_size]{};
+	uint32_t port_num{};
+
+	bool first{ true };
+	loop {
+		connectInput(ipv4, port, port_num, name, buf_size, !first);
+		if (client.ConnectTo(ipv4, port_num)) {
+			println("connected to server successfully");
+			break;
+		}
+		else {
+			println("connected to server failed");
+			first = false;
+		}
 	}
 
 	register_handle();
@@ -564,7 +579,46 @@ void App::run() {
 }
 
 App::App() {
+#if USE_IMGUI
+	main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor()); // Valid on GLFW 3.3+ only
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	//SetImGuiContext(ImGui::GetCurrentContext());
+	io = &ImGui::GetIO();
+	io->ConfigFlags =
+		//ImGuiConfigFlags_ViewportsEnable |
+		ImGuiConfigFlags_DockingEnable |
+		ImGuiConfigFlags_NavEnableKeyboard |     // Enable Keyboard Controls
+		ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
+
+	ImGui::StyleColorsDark();
+
+	// Setup scaling
+	style = &ImGui::GetStyle();
+	style->ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+	style->FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
+
+	//io.Fonts->Clear();
+	io->Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, nullptr, io->Fonts->GetGlyphRangesChineseFull());
+	//io.Fonts->Build();
+	//io.Fonts->AddFontFromFileTTF("font/msyh.ttc", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplGlfw_InitForOpenGL(window->m_get, true);
+	ImGui_ImplOpenGL3_Init("#version 330");
+#endif
+}
+
+App::~App() {
+#if USE_IMGUI
+	// Cleanup
+	ImGui::DestroyPlatformWindows();
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+#endif
 }
 
 int main() {

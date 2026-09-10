@@ -26,6 +26,12 @@ namespace gl {
 		glViewport(m_viewport.x, m_viewport.y, m_viewport.w, m_viewport.h);
 	}
 
+	void Window::setSize(int w, int h) {
+		m_width = w;
+		m_height = h;
+		glfwSetWindowSize(m_get, m_width, m_height);
+	}
+
 	void Window::setPos(glm::ivec2 pos) {
 		m_pos = pos;
 		glfwSetWindowPos(m_get, (int)m_pos.x, (int)m_pos.y);

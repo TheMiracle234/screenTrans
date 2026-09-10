@@ -30,7 +30,9 @@ namespace gl {
 
 		void setViewport(const Viewport& vp);
 		bool shouldClose();
-		void setSize(int w, int h) { m_width = w, m_height = h; }
+		void updateSize(int w, int h) { m_width = w, m_height = h; }
+		void setSize(int w, int h);
+		void updatePos(glm::ivec2 pos) { m_pos = pos; }
 		void setPos(glm::ivec2 pos);
 		void swapBuffers();
 	};

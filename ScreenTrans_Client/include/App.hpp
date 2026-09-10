@@ -43,9 +43,13 @@
 #	endif
 #endif
 
-
-#define println(x) std::cout<< x << "\n"
-#define print(x) std::cout<< x
+#ifndef NDEBUG
+#	define println(x) std::cout<< x << "\n"
+#	define print(x) std::cout<< x
+#else
+#	define println(x)
+#	define print(x)
+#endif
 #define loop for(;;)
 
 #undef min
@@ -100,15 +104,22 @@ void main(){
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
 	void Show();
+	void connectInput(char* ipv4, char* port, uint32_t& port_num, char* name, size_t buf_size, bool not_first);
 	void register_handle();
 public:
 	gl::GlfwInitGuard glfwInitGuard;
-	std::unique_ptr<gl::Window> window{ };
+	std::unique_ptr<gl::Window> window{ makeWindow()};
+
+#if USE_IMGUI
+	float main_scale{};
+	ImGuiIO* io{};
+	ImGuiStyle* style{};
+#endif
 
 	struct {
-		std::string name;
-		uint32_t room_id;
-		uint32_t passwd;
+		std::string name{};
+		uint32_t room_id{};
+		uint32_t passwd{};
 	} logger;
 
 	std::mutex mtx_video_frames;
@@ -127,5 +138,6 @@ public:
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
 	App();
+	~App();
 	void run();
 };
