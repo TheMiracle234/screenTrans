@@ -71,41 +71,38 @@ namespace ImGui {
 class App {
 private:
 	//inline std::chrono::steady_clock::time_point now() { return std::chrono::steady_clock::now(); }
-	//inline double duration_to_double(std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); }
-	struct imgStruct {
-		float pos[3];
-		float texCoords[2];
-	};
-	
-	inline static constexpr const char* vs = R"(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoords;
-out vec2 texCoords;
-void main(){
-	texCoords = aTexCoords;
-	gl_Position = vec4(aPos.x, -aPos.y, aPos.z, 1.0f);
-}
-)";
-	inline static constexpr const char* fs = R"(
-#version 330 core
-in vec2 texCoords;
-uniform sampler2D sampler;
-out vec4 FragColor;
-void main(){
-	FragColor = texture(sampler, texCoords);
-}
-)";
-
+	//inline double duration_to_double(std::chrono::steady_clock::duration d) { return std::chrono::duration<double>(d).count(); }	
 	static std::unique_ptr<gl::Window> makeWindow();
-
+private:
 	/* send: signals, id (, name, audio_frames(, pk_size, pk[n])) */
 	void Receive();
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
-	void Show();
-	void connectInput(char* ipv4, char* port, uint32_t& port_num, char* name, size_t buf_size, bool not_first);
-	void register_handle();
+private:
+	void pageRenderBegin(const char* title);
+	void pageRenderEnd();
+	struct PageRenderGuard {
+		App* p;
+		PageRenderGuard(App* self, const char* title) : p{self} { p->pageRenderBegin(title); }
+		~PageRenderGuard() { p->pageRenderEnd(); }
+	};
+	friend struct PageRenderGuard;
+	enum class Page {
+		connectToServer,
+		chooseMode,
+		makeRoom,
+		enterRoom,
+		Show,
+		serverStatusError,
+		never,
+		//count,
+	};
+	Page connectToServer();
+	Page chooseMode();
+	Page makeRoom();
+	Page enterRoom();
+	Page serverStatusError();
+	Page Show();
 public:
 	gl::GlfwInitGuard glfwInitGuard;
 	std::unique_ptr<gl::Window> window{ makeWindow()};
@@ -118,10 +115,10 @@ public:
 
 	struct {
 		std::string name{};
-		uint32_t room_id{};
-		uint32_t passwd{};
+		uint32_t room_id{ Room::invalid_id };
+		uint32_t passwd{ Room::invalid_passwd };
 	} logger;
-
+	Page page;
 	std::mutex mtx_video_frames;
 	std::mutex mtx_close;
 	std::mutex mtx_users;

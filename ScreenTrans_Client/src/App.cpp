@@ -13,6 +13,8 @@ extern "C" {
 }
 #endif//NDEBUG
 
+#include <inttypes.h>
+
 #if USE_IMGUI
 namespace ImGui {
 	void DockingSpace() {
@@ -211,32 +213,13 @@ void App::Send() {
 	}
 }
 
-constexpr const char* vs = R"(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoords;
-out vec2 texCoords;
-void main(){
-	texCoords = aTexCoords;
-	gl_Position = vec4(aPos.x, -aPos.y, aPos.z, 1.0f);
-}
-)";
-constexpr const char* fs = R"(
-#version 330 core
-in vec2 texCoords;
-uniform sampler2D sampler;
-out vec4 FragColor;
-void main(){
-	FragColor = texture(sampler, texCoords);
-}
-)";
+App::Page App::Show() {
+	chosen_user = logger.name;
+	users[chosen_user] = client.Id();
+	std::jthread send_thread{ &App::Send, this };
+	std::jthread recv_thread{ &App::Receive, this };
 
-struct imgStruct {
-	float pos[3];
-	float texCoords[2];
-};
 
-void App::Show() {
 	glfwSetWindowUserPointer(window->m_get, this);
 	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
@@ -249,11 +232,34 @@ void App::Show() {
 		user->window->setViewport({ 0,0,width, height });
 		});
 
+	constexpr const char* vs = R"(
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aTexCoords;
+out vec2 texCoords;
+void main(){
+	texCoords = aTexCoords;
+	gl_Position = vec4(aPos.x, -aPos.y, aPos.z, 1.0f);
+}
+)";
+	constexpr const char* fs = R"(
+#version 330 core
+in vec2 texCoords;
+uniform sampler2D sampler;
+out vec4 FragColor;
+void main(){
+	FragColor = texture(sampler, texCoords);
+}
+)";
+	struct imgStruct {
+		float pos[3];
+		float texCoords[2];
+	};
 
 	gl::Shader shader{ vs, fs };
 	shader.use();
 	shader.setUniform("sampler", 0);
-	gl::Texture2D img(1, 1, { 1 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA);
+	gl::Texture2D img(1, 1, { 0xFF,0x77,0x44,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
 	img.bindTo(0);
 	gl::VertexBufferLayout layoutImg;
 	layoutImg.push<float>(3);
@@ -327,6 +333,8 @@ void App::Show() {
 
 		if (show_settings) {
 			ImGui::Begin((char*)u8"设置");
+			uint32_t const_room_id = logger.room_id;
+			ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
 			if (d_time > 0.4) {
 				fps = ImGui::GetIO().Framerate;
 				d_time = 0;
@@ -399,163 +407,154 @@ void App::Show() {
 		img.resize(width, height, 4);
 		img.resetData(data, 4);
 	}
-
+	close_signal.store(true, std::memory_order_release);
+	return Page::chooseMode;
 }
 
-void App::register_handle() {
-	Choice choice = choice_invalid;
-	while (choice == -1) {
-		println("choose mode");
-		println((int)choice_enter_room << ": enter a room");
-		println((int)choice_make_room << ": make a room");
-		if (!(std::cin >> choice)) {
-			std::cin.clear(); // 清除错误标志
-			std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // 丢弃错误行
-			choice = -1;
-		}
-		if (choice == -1 || choice != choice_enter_room && choice != choice_make_room) {
-			println("invalid input");
-			choice = -1;
+void App::pageRenderBegin(const char* title) {
+	if (window->shouldClose()) { exit(1); }
+	glfwPollEvents();
+#if USE_IMGUI
+	// Start the Dear ImGui frame
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+#endif
+
+	glClearColor(0.1f, 0.1f, 0.1f, 0.1f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+#if USE_IMGUI
+	ImGui::DockingSpace();
+	ImGui::Begin(title);
+#endif
+}
+
+void App::pageRenderEnd() {
+#if USE_IMGUI
+	ImGui::End();// settings
+	ImGui::End();//docking end
+	// Rendering
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#endif	
+	window->swapBuffers();
+}
+
+App::Page App::chooseMode() {
+	Choice choice{ 0 };
+	while(1) {
+		PageRenderGuard pageRenderGuard{ this, "choose mode" };
+		if (ImGui::Button("<-")) { client.Send(true); return Page::connectToServer; }
+		ImGui::RadioButton("enter a room", &choice, choice_enter_room);
+		ImGui::RadioButton("make a room", &choice, choice_make_room);
+		if (choice == choice_invalid) { continue; }
+		if (ImGui::Button("->")) { 
+			client.Send(false);
+			client.Send(choice);
+			switch (choice) {
+			case choice_enter_room: return Page::enterRoom;break;
+			case choice_make_room: return Page::makeRoom;break;
+			}
 		}
 	}
-	client.Send(choice);
+	return Page::never;
+}
 
-	switch (choice) {
-	case choice_make_room: {
-		logger.passwd = Room::invalid_passwd;
-		while (logger.passwd == Room::invalid_passwd) {
-			println("set your password (1~4294967295): ");
-			std::cin >> logger.passwd;
+App::Page App::makeRoom() {
+	logger.room_id = Room::invalid_id;
+	logger.passwd = Room::invalid_passwd;
+	while (1) {
+		while (1) {
+			PageRenderGuard PageRenderGuard{ this, "passwd" };
+			if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
+			ImGui::InputScalar("passwd", ImGuiDataType_U32, &logger.passwd);
+			if (logger.passwd == Room::invalid_passwd) {
+				ImGui::Text("invalid passwd: %d", (int)Room::invalid_passwd);
+			}
+			else if(ImGui::Button("->")) { break; }
 		}
-
+		client.Send(false);
 		client.Send(logger.passwd);
 		auto room_id0 = client.ReceiveParseTo<uint32_t>();
 		if (!room_id0) {
-			goto err_server_status;
+			return Page::serverStatusError;
 		}
 		logger.room_id = *room_id0;
-		println("your room id: " << logger.room_id);
-	}break;
-	case choice_enter_room: {
-		uint32_t room_id = Room::invalid_id;
-		uint32_t passwd = Room::invalid_passwd;
-		for (;;) {
-			println("input room_id(1~4294967295), password(1~4294967295):");
-			if (!(std::cin >> room_id >> passwd)) {
-				std::cin.clear(); // 清除错误标志
-				std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // 丢弃错误行
-			}
-			if (room_id == Room::invalid_id) {
-				println("room_id format invalid");
-				continue;
-			}
-			if (passwd == Room::invalid_passwd) {
-				println("passwd format invalid");
-				continue;
-			}
+		return Page::Show;
+	}
+}
 
+App::Page App::enterRoom() {
+	logger.room_id = Room::invalid_id;
+	logger.passwd = Room::invalid_passwd;
+	uint32_t room_id{ Room::invalid_id };
+	uint32_t passwd{ Room::invalid_passwd };
+	bool room_id_not_exist{ false };
+	bool passwd_wrong{ false };
+	for (;;) {
+		PageRenderGuard pageRenderGuard(this, "enter room");
+		if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
+		ImGui::InputScalar("room_id", ImGuiDataType_U32, &room_id);
+		ImGui::InputScalar("passwd", ImGuiDataType_U32, &passwd);
+		ImGui::Text("both: 1~4294967295");
+		bool want_continue{ false };
+		if (room_id == Room::invalid_id)	{ ImGui::Text("room_id format invalid"); want_continue = true; } 
+		if (passwd == Room::invalid_passwd) { ImGui::Text("passwd format invalid"); want_continue = true; } 
+		if (want_continue) { continue; }
+		if (room_id_not_exist)	{ ImGui::Text("room id not exist"); } 
+		if (passwd_wrong)		{ ImGui::Text("passwd wrong"); }
+		if (ImGui::Button("->")) {
+			client.Send(false);
 			client.Send(room_id);
 			client.Send(passwd);
-
 			auto room_id_ok = client.ReceiveParseTo<bool>();
-			if (!room_id_ok.has_value()) {
-				goto err_server_status;
-			}
-			if (!room_id_ok.value()) {
-				println("room id not exist");
-				continue;
-			}
-
+			if (!room_id_ok.has_value()){ return Page::serverStatusError; }
+			if (!room_id_ok.value())	{ room_id_not_exist = true; continue; }
+			else { room_id_not_exist = false; }
 			auto passwd_ok = client.ReceiveParseTo<bool>();
-			if (!passwd_ok.has_value()) {
-				goto err_server_status;
-			}
-			if (!passwd_ok.value()) {
-				println("password wrong");
-				continue;
-			}
+			if (!passwd_ok.has_value())	{ return Page::serverStatusError; }
+			if (!passwd_ok.value())		{ passwd_wrong = true; continue; }
+			else { passwd_wrong = false; }
 			break;
 		}
-		logger.passwd = passwd;
-		logger.room_id = room_id;
-	}break;
 	}
-
-	return;
-err_server_status:
-	println("server status error");
-	system("pause");
-	exit(1);
+	logger.passwd = passwd;
+	logger.room_id = room_id;
+	return Page::Show;
 }
 
-void App::connectInput(char* ipv4, char* port, uint32_t& port_num, char* name, size_t buf_size, bool not_first) {
-	loop {
-		if (window->shouldClose()) {
-			exit(1);
-		}
-		glfwPollEvents();
-#if USE_IMGUI
-		// Start the Dear ImGui frame
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-#endif
-
-		glClearColor(0.1f, 0.1f, 0.1f, 0.1f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-#if USE_IMGUI
-		ImGui::DockingSpace();
-
-
-		ImGui::Begin((char*)u8"connect");
-		//ImGui::ShowDemoWindow();
-		ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
-		ImGui::InputText("target_ipv4", ipv4, buf_size);
-		ImGui::InputText("target_port", port, buf_size);
-		ImGui::InputText("your_name", name, buf_size, ImGuiInputTextFlags_CharsNoBlank);
-		if (not_first) {
-			ImGui::Text("invalid or wrong input exist");
-		}
-		bool connect = ImGui::Button("connect");
-		bool port_ok = sscanf(port, "%u", &port_num) == 1;
-		if (!port_ok) { ImGui::Text("%s: port invalid-should be a unsigned number", port); }
-		ImGui::End();// settings
-
-		ImGui::End();//docking end
-
-		// Rendering
-		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-#endif	
-		window->swapBuffers();
-		if (connect && port_ok) { break; }
+App::Page App::serverStatusError() {
+	while (1) {
+		PageRenderGuard pageRenderGuard{ this, "server status error" };
+		ImGui::Text("server status error. please close the window");
 	}
 }
 
-void App::run() {
-#ifndef NDEBUG
-	{
-		std::filesystem::path cwd = std::filesystem::current_path();
-		std::cout << "当前工作目录：" << cwd << std::endl;
-	}
-#endif//NDEBUG
-
-#ifdef NDEBUG
-	av_log_set_level(AV_LOG_ERROR); // ffmpeg log
-#endif//NDEBUG
-
-
-	constexpr size_t buf_size = 128;
+App::Page App::connectToServer() {
+	client = Client{ TM::Socket::TCP, Socket::IPV4 };
+	logger.name = {};
+	constexpr size_t buf_size = 256;
 	char ipv4[buf_size]{};
-	char port[buf_size]{};
+	constexpr uint32_t invalid_port{ 0 };
+	uint32_t port{ invalid_port };
 	char name[buf_size]{};
-	uint32_t port_num{};
 
 	bool first{ true };
 	loop {
-		connectInput(ipv4, port, port_num, name, buf_size, !first);
-		if (client.ConnectTo(ipv4, port_num)) {
+		loop {
+			PageRenderGuard pageRenderGuard{this, "connect to server" };
+			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
+			ImGui::InputText("target_ipv4", ipv4, buf_size);
+			ImGui::InputScalar("target_port", ImGuiDataType_U32, &port);
+			ImGui::InputText("your_name", name, buf_size, ImGuiInputTextFlags_CharsNoBlank);
+			bool ok{ true };
+			if (!first)					{ ImGui::Text("connect failed"); ok = false; } 
+			if (strlen(name) == 0)		{ ImGui::Text("name should not be blank"); ok = false; }
+			if (port == invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", port); ok = false; }
+			if (ok && ImGui::Button("connect")) { break; }
+		}
+		if (client.ConnectTo(ipv4, port)) {
 			println("connected to server successfully");
 			break;
 		}
@@ -564,18 +563,26 @@ void App::run() {
 			first = false;
 		}
 	}
+	logger.name = name;
+	return Page::chooseMode;
+}
 
-	register_handle();
-	println("register successfully");
+void App::run() {
+#ifdef NDEBUG
+	av_log_set_level(AV_LOG_ERROR); // ffmpeg log
+#endif//NDEBUG
 
-	chosen_user = logger.name;
-	users[chosen_user] = client.Id();
+	while (!close_signal.load(std::memory_order_acquire)) {
+		switch (page) {
+		case Page::connectToServer: page = connectToServer(); break;
+		case Page::chooseMode: page = chooseMode(); break;
+		case Page::makeRoom: page = makeRoom(); break;
+		case Page::enterRoom: page = enterRoom(); break;
+		case Page::Show: page = Show(); break;
+		case Page::serverStatusError: page = serverStatusError(); break;
+		}
+	}
 
-	std::jthread send_thread{ &App::Send, this };
-	std::jthread recv_thread{ &App::Receive, this };
-	Show();
-
-	close_signal = true;
 }
 
 App::App() {

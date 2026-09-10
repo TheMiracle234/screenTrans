@@ -88,7 +88,7 @@ namespace gl {
 		int m_imgH;
 		std::vector<uint8_t> m_data;
 	public:
-		Texture2D(int imgw, int imgh, std::vector<uint8_t> data, GpuTextureFmt gpu_fmt, TextureFmt fmt);
+		Texture2D(int imgw, int imgh, std::vector<uint8_t> data, GpuTextureFmt gpu_fmt, TextureFmt fmt, int channels);
 		Texture2D(const Texture2D&) = delete;
 		Texture2D(Texture2D&& other) noexcept;
 		Texture2D& operator=(const Texture2D&) = delete;

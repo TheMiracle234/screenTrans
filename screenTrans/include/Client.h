@@ -110,7 +110,8 @@ namespace TM {
         Client(Socket::Protocol protocol, Socket::Ip ip);
         Client(const Client& other) = delete;
         Client(Client&& other) noexcept : skt(std::move(other.skt)), ip_version(other.ip_version) {}
-		bool ConnectTo(const std::string& ip, uint32_t port);
+        void operator=(Client&& other) noexcept { skt = std::move(other.skt); ip_version = other.ip_version; }
+        bool ConnectTo(const std::string& ip, uint32_t port);
 		SOCKET Id() { return skt.id; }
 #ifndef TM_CLIENT_NO_MUTEX
         std::mutex& mutex() { return m_mtx; }

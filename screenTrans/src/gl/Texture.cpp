@@ -5,11 +5,13 @@
 #include <cassert>
 
 namespace gl {
-	Texture2D::Texture2D(int imgw, int imgh, std::vector<uint8_t> data, GpuTextureFmt gpu_fmt, TextureFmt fmt):
+	Texture2D::Texture2D(int imgw, int imgh, std::vector<uint8_t> data, GpuTextureFmt gpu_fmt, TextureFmt fmt, int channels):
 		m_gpuFmt(gpu_fmt), m_fmt(fmt), m_data(std::move(data)),
 		m_imgW(imgw),
 		m_imgH(imgh)
 	{
+		assert(m_data.size() % (m_imgW * m_imgH * channels) == 0);
+
 		GLCALL(glGenTextures(1, &m_texture));
 		GLCALL(glBindTexture(GL_TEXTURE_2D, m_texture));
 
