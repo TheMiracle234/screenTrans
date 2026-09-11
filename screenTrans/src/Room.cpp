@@ -84,18 +84,15 @@ void Room::sendMsg(Client* client, Room* room) {
 					auto choice = room->m_choices_of.find(c->Id());
 					choice_isnt_me = choice == room->m_choices_of.end() || choice->second != *id;
 				}
-				if (choice_isnt_me) {
-					c->Send(signal_choiceNotMatch);
-					c->Send(*id);
-					c->Send(*name);
-					c->Send(*audio_frames);
-					return;
-				}
+				if (choice_isnt_me) { c->Send(signal_choiceNotMatch); } 
+				else				{ c->Send(signal_none); }
 
-				c->Send(signal_none);
 				c->Send(*id);
 				c->Send(*name);
 				c->Send(*audio_frames);
+				if (choice_isnt_me) {
+					return;
+				}
 				c->Send(*pk_size);
 				for (auto& pk : packets) {
 					c->Send(pk);

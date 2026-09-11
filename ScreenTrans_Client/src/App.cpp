@@ -407,8 +407,9 @@ void main(){
 		img.resize(width, height, 4);
 		img.resetData(data, 4);
 	}
+	println("end ok");
 	close_signal.store(true, std::memory_order_release);
-	return Page::chooseMode;
+	return Page::never;
 }
 
 void App::pageRenderBegin(const char* title) {
