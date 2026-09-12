@@ -18,17 +18,17 @@ namespace ST {
     {
     public:
         AudioCapture(
-            uint32_t sampleRate = 48000,
-            uint32_t channels = 1,
-            uint32_t periodSizeInFrames = 256
+            uint32_t sampleRate = 44100,
+            uint32_t channels = 2,
+            uint32_t periodSizeInFrames = 1024
         );
 
         ~AudioCapture();
 
         void Reset(
-            uint32_t sampleRate = 48000,
-            uint32_t channels = 1,
-            uint32_t periodSizeInFrames = 256
+            uint32_t sampleRate = 44100,
+            uint32_t channels = 2,
+            uint32_t periodSizeInFrames = 1024
         );
 
         bool Start();
@@ -36,7 +36,7 @@ namespace ST {
         bool IsRunning() const { return m_running; }
 
         // std::move
-        std::vector<int16_t> Frames();
+        std::vector<float> Frames();
 
     private:
         static void DataCallback(
@@ -47,9 +47,9 @@ namespace ST {
         );
 
         void Init(
-            uint32_t sampleRate = 48000,
-            uint32_t channels = 1,
-            uint32_t periodSizeInFrames = 256
+            uint32_t sampleRate = 44100,
+            uint32_t channels = 2,
+            uint32_t periodSizeInFrames = 1024
         );
 
     private:
@@ -57,10 +57,10 @@ namespace ST {
         std::atomic<bool> m_running = false;
         std::atomic<int> m_activeCallbacks{ 0 };
         // uint32_t m_sampleRate = 48000;
-        uint32_t m_channels = 1;
+        uint32_t m_channels = 2;
         // uint32_t m_periodSizeInFrames = 256;
         ma_device m_device{};
-        std::vector<int16_t> m_frames;
+        std::vector<float> m_frames;
         std::mutex m_mtx_fs{};
     };
 

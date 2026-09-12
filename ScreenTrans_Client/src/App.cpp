@@ -95,7 +95,7 @@ void App::Receive() {
 
 		auto id = client.ReceiveParseTo<SOCKET>();
 		auto other_name = client.ReceiveString();
-		auto frames = client.ReceiveVec<int16_t>();
+		auto frames = client.ReceiveVec<float>();
 		ad_player.PushFrames(*frames);
 		{
 			std::lock_guard lock(mtx_users);
@@ -159,7 +159,7 @@ void App::Send() {
 	constexpr int bitrate = 4000000;
 	ST::H264Encoder encoder(w, h, fps, bitrate);
 
-	AudioCapture ad_cpt;
+	AudioCapture ad_cpt{ 44100, 2, 1024 };
 	ad_cpt.Start();
 
 	auto last_time = std::chrono::steady_clock::now();

@@ -40,7 +40,7 @@ void Room::sendMsg(Client* client, Room* room) {
 
 		auto id = client->ReceiveParseTo<SOCKET>();
 		auto name = client->ReceiveString();
-		auto audio_frames = client->ReceiveVec<int16_t>();
+		auto audio_frames = client->ReceiveVec<float>();
 		auto choose_socket = client->ReceiveParseTo<SOCKET>();
 		auto pk_size = client->ReceiveParseTo<int32_t>();
 

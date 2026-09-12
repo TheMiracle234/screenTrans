@@ -134,7 +134,7 @@ public:
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 20;
 
-	AudioPlay ad_player{ 48000, 1, 256 };
+	AudioPlay ad_player{ 44100, 2, 1024 };
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
 	App();
