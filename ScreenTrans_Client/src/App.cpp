@@ -70,16 +70,7 @@ void App::Receive() {
 
 	ad_player.Start();
 
-	auto last_time = std::chrono::steady_clock::now();
-
 	while (!close_signal) {
-		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-			std::chrono::duration<double>(1.0 / max_fps_data.load(std::memory_order_acquire))
-		);
-		auto next_frame = last_time + target_interval;
-		std::this_thread::sleep_until(next_frame);
-		last_time = next_frame;
-
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed())
@@ -340,12 +331,10 @@ void main(){
 				d_time = 0;
 			}
 			ImGui::Text("FPS: %.3f", fps);
-			constexpr double MAX_MAX_FPS = 100.0;
-			constexpr double MIN_MAX_FPS = 5.0;
 			auto fd = max_fps_data.load(std::memory_order_acquire);
 			auto fv = max_fps_video.load(std::memory_order_acquire);
-			ImGui::SliderScalar("max_fps_data", ImGuiDataType_Double, &fd, &MIN_MAX_FPS, &MAX_MAX_FPS);
-			ImGui::SliderScalar("max_fps_video", ImGuiDataType_Double, &fv, &MIN_MAX_FPS, &MAX_MAX_FPS);
+			ImGui::SliderScalar("fps_data", ImGuiDataType_Double, &fd, &MIN_MAX_FPS, &MAX_MAX_FPS);
+			ImGui::SliderScalar("fps_video", ImGuiDataType_Double, &fv, &MIN_MAX_FPS, &MAX_MAX_FPS);
 			max_fps_data.store(fd, std::memory_order_release);
 			max_fps_video.store(fv, std::memory_order_release);
 			ImGui::Text("target:");
@@ -389,7 +378,11 @@ void main(){
 		{
 			std::lock_guard<std::mutex> lock(mtx_video_frames);
 			if (total_video_frames.empty()) {
+				//PL;
 				continue;
+			}
+			else {
+				//PL;
 			}
 
 			frame = std::move(total_video_frames.front());

@@ -84,7 +84,7 @@ void Room::sendMsg(Client* client, Room* room) {
 					auto choice = room->m_choices_of.find(c->Id());
 					choice_isnt_me = choice == room->m_choices_of.end() || choice->second != *id;
 				}
-				if (choice_isnt_me) { c->Send(signal_choiceNotMatch); } 
+				if (choice_isnt_me) { c->Send(signal_choiceNotMatch); }
 				else				{ c->Send(signal_none); }
 
 				c->Send(*id);
