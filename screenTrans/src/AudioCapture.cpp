@@ -49,7 +49,7 @@ namespace ST {
         ma_device_config config =
             ma_device_config_init(ma_device_type_capture);
 
-        config.capture.format = ma_format_s16;
+        config.capture.format = ma_format_f32;
         config.capture.channels = channels;
 
         config.sampleRate = sampleRate;
@@ -99,7 +99,7 @@ namespace ST {
         }
     }
 
-    std::vector<int16_t> AudioCapture::Frames() {
+    std::vector<float> AudioCapture::Frames() {
         std::lock_guard<std::mutex> lock(m_mtx_fs);
         return std::move(m_frames);
     }
@@ -118,7 +118,7 @@ namespace ST {
 
         self->m_activeCallbacks.fetch_add(1, std::memory_order_acq_rel);
 
-        const int16_t* pcm = static_cast<const int16_t*>(input);
+        const float* pcm = static_cast<const float*>(input);
         std::lock_guard<std::mutex> lock(self->m_mtx_fs);
         self->m_frames.insert(self->m_frames.end(), pcm, pcm + frameCount * self->m_channels);
 

@@ -53,7 +53,7 @@ namespace ST {
         m_channels = channels;
 
         ma_device_config config = ma_device_config_init(ma_device_type_playback);
-        config.playback.format = ma_format_s16;
+        config.playback.format = ma_format_f32;
         config.playback.channels = channels;
 
         config.sampleRate = sampleRate;
@@ -100,7 +100,7 @@ namespace ST {
         }
     }
 
-    void AudioPlay::PushFrames(const std::vector<int16_t>& data) {
+    void AudioPlay::PushFrames(const std::vector<float>& data) {
         if (data.empty())
             return;
 
@@ -123,7 +123,7 @@ namespace ST {
         }
     }
 
-    void AudioPlay::PushFrames(std::vector<int16_t>&& data) {
+    void AudioPlay::PushFrames(std::vector<float>&& data) {
         if (data.empty())
             return;
 
@@ -170,12 +170,12 @@ namespace ST {
         // 如果设备未运行，直接输出静音
         if (!self->m_running.load(std::memory_order_relaxed)) {
             size_t samplesToWrite = frameCount * self->m_channels;
-            std::memset(output, 0, samplesToWrite * sizeof(int16_t));
+            std::memset(output, 0, samplesToWrite * sizeof(float));
             self->m_activeCallbacks.fetch_sub(1, std::memory_order_acq_rel);
             return;
         }
 
-        int16_t* out = static_cast<int16_t*>(output);
+        float* out = static_cast<float*>(output);
         size_t totalSamplesNeeded = frameCount * self->m_channels;
 
         {
@@ -184,7 +184,7 @@ namespace ST {
             size_t available = self->m_buffer.size() - self->m_readPos;
             if (available >= totalSamplesNeeded) {
                 // 有足够数据，直接拷贝
-                std::memcpy(out, self->m_buffer.data() + self->m_readPos, totalSamplesNeeded * sizeof(int16_t));
+                std::memcpy(out, self->m_buffer.data() + self->m_readPos, totalSamplesNeeded * sizeof(float));
                 self->m_readPos += totalSamplesNeeded;
                 // 如果缓冲区全部用完，清空并重置 readPos（可选）
                 if (self->m_readPos == self->m_buffer.size()) {
@@ -195,11 +195,11 @@ namespace ST {
             else {
                 // 数据不足：先拷贝已有数据，剩余部分填充静音
                 if (available > 0) {
-                    std::memcpy(out, self->m_buffer.data() + self->m_readPos, available * sizeof(int16_t));
+                    std::memcpy(out, self->m_buffer.data() + self->m_readPos, available * sizeof(float));
                     out += available;
                 }
                 size_t remaining = totalSamplesNeeded - available;
-                std::memset(out, 0, remaining * sizeof(int16_t));
+                std::memset(out, 0, remaining * sizeof(float));
                 // 清空缓冲区
                 self->m_buffer.clear();
                 self->m_readPos = 0;

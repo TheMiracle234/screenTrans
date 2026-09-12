@@ -44,12 +44,13 @@
 #endif
 
 #ifndef NDEBUG
-#	define println(x) std::cout<< x << "\n"
 #	define print(x) std::cout<< x
 #else
-#	define println(x)
 #	define print(x)
 #endif
+
+#define println(x) print(x << "\n")
+#define PL println(__LINE__)
 #define loop for(;;)
 
 #undef min
@@ -58,9 +59,11 @@
 using TM::Client, TM::Socket;
 using ST::H264Encoder, ST::H264Decoder, ST::AudioPlay, ST::AudioCapture, ST::ScreenCapture;
 
-static inline constexpr int SLEEP_TIME = 0;
-static inline constexpr size_t MAX_VIDEO_FRAMES = 10;
-static inline constexpr size_t KEEP_FRAMES = 4;
+inline constexpr int SLEEP_TIME = 0;
+inline constexpr size_t MAX_VIDEO_FRAMES = 10;
+inline constexpr size_t KEEP_FRAMES = 4;
+inline constexpr double MAX_MAX_FPS = 150.0;
+inline constexpr double MIN_MAX_FPS = 5.0;
 
 #if USE_IMGUI
 namespace ImGui {
@@ -79,11 +82,11 @@ private:
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
 private:
-	void pageRenderBegin(const char* title);
+	void pageRenderBegin(const char* title, int sleepTime);
 	void pageRenderEnd();
 	struct PageRenderGuard {
 		App* p;
-		PageRenderGuard(App* self, const char* title) : p{self} { p->pageRenderBegin(title); }
+		PageRenderGuard(App* self, const char* title, int sleepTime) : p{self} { p->pageRenderBegin(title, sleepTime); }
 		~PageRenderGuard() { p->pageRenderEnd(); }
 	};
 	friend struct PageRenderGuard;
@@ -128,10 +131,10 @@ public:
 	std::string chosen_user; // init with self
 	std::unordered_map<std::string, SOCKET> users; // init with self
 
-	std::atomic<double> max_fps_data = 128;
-	std::atomic<double> max_fps_video = 128;
+	std::atomic<double> max_fps_data = 20;
+	std::atomic<double> max_fps_video = 20;
 
-	AudioPlay ad_player{ 48000, 1, 256 };
+	AudioPlay ad_player{ 44100, 2, 1024 };
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
 	App();
