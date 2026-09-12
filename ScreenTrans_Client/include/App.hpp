@@ -82,11 +82,11 @@ private:
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
 private:
-	void pageRenderBegin(const char* title);
+	void pageRenderBegin(const char* title, int sleepTime);
 	void pageRenderEnd();
 	struct PageRenderGuard {
 		App* p;
-		PageRenderGuard(App* self, const char* title) : p{self} { p->pageRenderBegin(title); }
+		PageRenderGuard(App* self, const char* title, int sleepTime) : p{self} { p->pageRenderBegin(title, sleepTime); }
 		~PageRenderGuard() { p->pageRenderEnd(); }
 	};
 	friend struct PageRenderGuard;

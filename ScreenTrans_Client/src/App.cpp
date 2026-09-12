@@ -405,7 +405,8 @@ void main(){
 	return Page::never;
 }
 
-void App::pageRenderBegin(const char* title) {
+void App::pageRenderBegin(const char* title, int sleepTime) {
+	std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
 	if (window->shouldClose()) { exit(1); }
 	glfwPollEvents();
 #if USE_IMGUI
@@ -438,7 +439,7 @@ void App::pageRenderEnd() {
 App::Page App::chooseMode() {
 	Choice choice{ 0 };
 	while(1) {
-		PageRenderGuard pageRenderGuard{ this, "choose mode" };
+		PageRenderGuard pageRenderGuard{ this, "choose mode", 20 };
 		if (ImGui::Button("<-")) { client.Send(true); return Page::connectToServer; }
 		ImGui::RadioButton("enter a room", &choice, choice_enter_room);
 		ImGui::RadioButton("make a room", &choice, choice_make_room);
@@ -460,7 +461,7 @@ App::Page App::makeRoom() {
 	logger.passwd = Room::invalid_passwd;
 	while (1) {
 		while (1) {
-			PageRenderGuard PageRenderGuard{ this, "passwd" };
+			PageRenderGuard PageRenderGuard{ this, "passwd", 20 };
 			if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
 			ImGui::InputScalar("passwd", ImGuiDataType_U32, &logger.passwd);
 			if (logger.passwd == Room::invalid_passwd) {
@@ -487,7 +488,7 @@ App::Page App::enterRoom() {
 	bool room_id_not_exist{ false };
 	bool passwd_wrong{ false };
 	for (;;) {
-		PageRenderGuard pageRenderGuard(this, "enter room");
+		PageRenderGuard pageRenderGuard(this, "enter room", 20);
 		if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
 		ImGui::InputScalar("room_id", ImGuiDataType_U32, &room_id);
 		ImGui::InputScalar("passwd", ImGuiDataType_U32, &passwd);
@@ -520,7 +521,7 @@ App::Page App::enterRoom() {
 
 App::Page App::serverStatusError() {
 	while (1) {
-		PageRenderGuard pageRenderGuard{ this, "server status error" };
+		PageRenderGuard pageRenderGuard{ this, "server status error", 20 };
 		ImGui::Text("server status error. please close the window");
 	}
 }
@@ -537,7 +538,7 @@ App::Page App::connectToServer() {
 	bool first{ true };
 	loop {
 		loop {
-			PageRenderGuard pageRenderGuard{this, "connect to server" };
+			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
 			ImGui::InputText("target_ipv4", ipv4, buf_size);
 			ImGui::InputScalar("target_port", ImGuiDataType_U32, &port);
