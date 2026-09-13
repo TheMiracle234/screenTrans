@@ -110,9 +110,17 @@ namespace ST {
         const void* input,
         ma_uint32 frameCount)
     {
+        struct TimePointUpdater {
+            uint64_t* p;
+            uint64_t fc;
+            TimePointUpdater(uint64_t* o, uint64_t frameCount): p(o), fc(frameCount){}
+            ~TimePointUpdater() { *p += fc; }
+        };
         (void)output;
 
         auto* self = static_cast<AudioCapture*>(device->pUserData);
+        TimePointUpdater timePointUpdater{ &self->m_currframePoint, frameCount };
+
         if (!self || !input || !self->m_running.load(std::memory_order_relaxed))
             return;
 
@@ -120,6 +128,9 @@ namespace ST {
 
         const float* pcm = static_cast<const float*>(input);
         std::lock_guard<std::mutex> lock(self->m_mtx_fs);
+        if (self->m_frames.empty()) {
+            self->m_audioFramePoint.store(self->m_currframePoint, std::memory_order_release);
+        }
         self->m_frames.insert(self->m_frames.end(), pcm, pcm + frameCount * self->m_channels);
 
         self->m_activeCallbacks.fetch_sub(1, std::memory_order_acq_rel);

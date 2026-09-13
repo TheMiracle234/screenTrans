@@ -141,6 +141,8 @@
   <ItemGroup>
     <ClCompile Include="src\AudioCapture.cpp" />
     <ClCompile Include="src\AudioPlay.cpp" />
+    <ClCompile Include="src\audio\Player.cpp" />
+    <ClCompile Include="src\audio\User.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
     <ClCompile Include="src\Room.cpp" />
@@ -169,6 +171,8 @@
   <ItemGroup>
     <ClInclude Include="include\AudioCapture.h" />
     <ClInclude Include="include\AudioPlay.h" />
+    <ClInclude Include="include\audio\Player.hpp" />
+    <ClInclude Include="include\audio\User.hpp" />
     <ClInclude Include="include\Client.h" />
     <ClInclude Include="include\gl\Buffer.h" />
     <ClInclude Include="include\gl\debug.h" />

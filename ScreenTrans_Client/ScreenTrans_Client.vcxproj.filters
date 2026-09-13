@@ -20,9 +20,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\pages.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\App.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
