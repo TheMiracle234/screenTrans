@@ -71,6 +71,7 @@ void App::Receive() {
 	//ad_player.Start();
 	audioPlayer.start();
 	while (!close_signal) {
+		PL;
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed())
@@ -170,6 +171,7 @@ void App::Send() {
 
 	auto last_time = std::chrono::steady_clock::now();
 	loop{
+		PL;
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>(1.0 / max_fps_data.load(std::memory_order_acquire))
 		);
@@ -588,6 +590,7 @@ App::Page App::connectToServer() {
 		}
 	}
 	logger.name = name;
+	println(logger.name);
 	return Page::chooseMode;
 }
 

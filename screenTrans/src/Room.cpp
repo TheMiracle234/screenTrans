@@ -9,6 +9,11 @@
 
 #define println(x) std::cout<< x << "\n"
 #define print(x) std::cout<< x
+#ifndef NDEBUG
+#	define PL println(__LINE__)
+#else
+#	define PL
+#endif
 //#define pv(x) std::cout<< #x << ": " << x << "\n"
 
 /*
@@ -33,6 +38,7 @@ void Room::sendMsg(Client* client, Room* room) {
 	Flag0 flags = 0;
 	SOCKET last_chosen_socket = INVALID_SOCKET;
 	for (;;) {
+		PL;
 		if (client->Closed() && flags & flag_closedSignalSent)
 		{
 			break;
@@ -95,7 +101,7 @@ void Room::sendMsg(Client* client, Room* room) {
 				}
 				c->Send(*pk_size);
 				for (auto& pk : packets) {
-					c->Send(std::move(pk));
+					c->Send(pk);
 				}
 			});
 		}
