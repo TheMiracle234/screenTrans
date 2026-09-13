@@ -5,7 +5,7 @@
 #include <Socket.h>
 #include <H264Encoder.h>
 #include <H264Decoder.h>
-#include <AudioCapture.h>
+#include <audio/Capture.hpp>
 #include <audio/Player.hpp>
 #include <audio/User.hpp>
 #include <ScreenCapture.h>
@@ -60,7 +60,7 @@
 #undef max
 
 using TM::Client, TM::Socket;
-using ST::H264Encoder, ST::H264Decoder, ST::AudioCapture, ST::ScreenCapture;
+using ST::H264Encoder, ST::H264Decoder, ST::ScreenCapture;
 
 inline constexpr int SLEEP_TIME = 0;
 inline constexpr size_t MAX_VIDEO_FRAMES = 10;

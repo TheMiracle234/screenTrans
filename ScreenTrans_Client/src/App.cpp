@@ -165,7 +165,7 @@ void App::Send() {
 	constexpr int bitrate = 4000000;
 	ST::H264Encoder encoder(w, h, fps, bitrate);
 
-	AudioCapture ad_cpt{ audio::sampleRate, audio::channels, audio::periodSizeInFrames };
+	audio::Capture ad_cpt{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	ad_cpt.Start();
 
 	auto last_time = std::chrono::steady_clock::now();

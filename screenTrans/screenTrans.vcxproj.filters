@@ -33,9 +33,6 @@
     <ClCompile Include="src\H264Decoder.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\AudioPlay.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="src\AudioCapture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -113,7 +110,7 @@
     <ClInclude Include="include\AudioPlay.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\AudioCapture.h">
+    <ClInclude Include="include\audio\Capture.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="thirdparty\include\imgui\imconfig.h">

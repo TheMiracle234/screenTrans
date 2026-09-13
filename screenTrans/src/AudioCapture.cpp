@@ -1,20 +1,23 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
-#include "AudioCapture.h"
+#include "audio/Capture.hpp"
 #include <iostream>
 #include <thread>
 
-namespace ST {
+namespace audio {
 
-    AudioCapture::AudioCapture(
+    Capture::Capture(
         uint32_t sampleRate,
         uint32_t channels,
-        uint32_t periodSizeInFrames
-    ) {
+        uint32_t periodSizeInFrames,
+        int bufSec
+    ):
+        m_buf(sampleRate* channels* bufSec)
+    {
         Init(sampleRate, channels, periodSizeInFrames);
     }
 
-    void AudioCapture::Reset(
+    void Capture::Reset(
         uint32_t sampleRate,
         uint32_t channels,
         uint32_t periodSizeInFrames
@@ -27,7 +30,7 @@ namespace ST {
         }
     }
 
-    AudioCapture::~AudioCapture()
+    Capture::~Capture()
     {
         Stop();
         if (m_initiated) {
@@ -35,7 +38,7 @@ namespace ST {
         }
     }
 
-    void AudioCapture::Init(
+    void Capture::Init(
         uint32_t sampleRate,
         uint32_t channels,
         uint32_t periodSizeInFrames
@@ -64,7 +67,7 @@ namespace ST {
             ma_device_init(nullptr, &config, &m_device);
 
         if (result != MA_SUCCESS) {
-            std::cerr << "AudioCapture::init(...) error" << std::endl;
+            std::cerr << "Capture::init(...) error" << std::endl;
             system("pause");
             exit(1);
         }
@@ -72,18 +75,18 @@ namespace ST {
         m_initiated = true;
     }
 
-    bool AudioCapture::Start() {
+    bool Capture::Start() {
         auto result = ma_device_start(&m_device);
         if (result != MA_SUCCESS)
         {
-            std::cerr << "AudioCapture::Start() error" << std::endl;
+            std::cerr << "Capture::Start() error" << std::endl;
             return false;
         }
         m_running = true;
         return true;
     }
 
-    void AudioCapture::Stop()
+    void Capture::Stop()
     {
         if (m_running)
         {
@@ -99,40 +102,24 @@ namespace ST {
         }
     }
 
-    std::vector<float> AudioCapture::Frames() {
-        std::lock_guard<std::mutex> lock(m_mtx_fs);
-        return std::move(m_frames);
+    std::vector<float> Capture::Frames() {
+        std::vector<float> res(m_buf.read_available());
+        m_buf.pop(res.data());
+        return res;
     }
 
-    void AudioCapture::DataCallback(
+    void Capture::DataCallback(
         ma_device* device,
         void* output,
         const void* input,
         ma_uint32 frameCount)
     {
-        struct TimePointUpdater {
-            uint64_t* p;
-            uint64_t fc;
-            TimePointUpdater(uint64_t* o, uint64_t frameCount): p(o), fc(frameCount){}
-            ~TimePointUpdater() { *p += fc; }
-        };
         (void)output;
-
-        auto* self = static_cast<AudioCapture*>(device->pUserData);
-        TimePointUpdater timePointUpdater{ &self->m_currframePoint, frameCount };
-
-        if (!self || !input || !self->m_running.load(std::memory_order_relaxed))
-            return;
-
+        auto* self = static_cast<Capture*>(device->pUserData);
+        if (!self || !input || !self->m_running.load(std::memory_order_relaxed)) { return; }
         self->m_activeCallbacks.fetch_add(1, std::memory_order_acq_rel);
-
         const float* pcm = static_cast<const float*>(input);
-        std::lock_guard<std::mutex> lock(self->m_mtx_fs);
-        if (self->m_frames.empty()) {
-            self->m_audioFramePoint.store(self->m_currframePoint, std::memory_order_release);
-        }
-        self->m_frames.insert(self->m_frames.end(), pcm, pcm + frameCount * self->m_channels);
-
+        self->m_buf.push(pcm, frameCount * self->m_channels);
         self->m_activeCallbacks.fetch_sub(1, std::memory_order_acq_rel);
     }
 
