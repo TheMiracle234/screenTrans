@@ -60,7 +60,7 @@
 #undef max
 
 using TM::Client, TM::Socket;
-using ST::H264Encoder, ST::H264Decoder, ST::AudioPlay, ST::AudioCapture, ST::ScreenCapture;
+using ST::H264Encoder, ST::H264Decoder, ST::AudioCapture, ST::ScreenCapture;
 
 inline constexpr int SLEEP_TIME = 0;
 inline constexpr size_t MAX_VIDEO_FRAMES = 10;
@@ -148,11 +148,10 @@ public:
 		boost::lockfree::spsc_queue<float> audioBuf{ audio::sampleRate * audio::channels * audio::bufSec };
 	};
 	std::unordered_map < std::string, User > users; // init with self
-	//boost::lockfree::spsc_queue<float> audioBufGlobal{ audio::sampleRate * audio::channels * audio::bufSec };
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 20;
 
-	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, 1 };
+	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
