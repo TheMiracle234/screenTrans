@@ -139,7 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\AudioCapture.cpp" />
+    <ClCompile Include="src\audio\Capture.cpp" />
     <ClCompile Include="src\audio\Player.cpp" />
     <ClCompile Include="src\audio\User.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />

@@ -95,6 +95,7 @@ void App::Receive() {
 
 		auto id = client.ReceiveParseTo<SOCKET>();
 		auto other_name = client.ReceiveString();
+		auto frames = client.ReceiveVec<float>();
 		{
 			std::lock_guard lock(mtx_users);
 			auto itr = users.find(*other_name);
@@ -104,9 +105,8 @@ void App::Receive() {
 			else {
 				itr->second.skt = *id;
 			}
+			users[*other_name].audioBuf.push(frames->begin(), frames->end());
 		}
-		auto frames = client.ReceiveVec<float>();
-		users[*other_name].audioBuf.push(frames->begin(), frames->end());
 
 		if (*signals & signal_choiceNotMatch) {
 			continue;
@@ -215,13 +215,17 @@ void App::audioMix() {
 	std::vector<float> mixBuf(samples);
 	std::vector<float> getBuf(samples);
 	while (!client.Closed()) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		std::fill(mixBuf.begin(), mixBuf.end(), 0.0f);
 		size_t realSamples{ 0 };
-		for (auto& user : users) {
-			size_t thisSamples = user.second.audioBuf.pop(getBuf.data(), samples);
-			realSamples = std::max(realSamples, thisSamples);
-			for (size_t i = 0;i < thisSamples;++i) {
-				mixBuf[i] += getBuf[i];
+		{
+			std::lock_guard lock{ mtx_users };
+			for (auto& user : users) {
+				size_t thisSamples = user.second.audioBuf.pop(getBuf.data(), samples);
+				realSamples = std::max(realSamples, thisSamples);
+				for (size_t i = 0;i < thisSamples;++i) {
+					mixBuf[i] += getBuf[i];
+				}
 			}
 		}
 		audioUser.pushFrames(mixBuf.data(), realSamples);
@@ -235,7 +239,7 @@ App::Page App::Show() {
 	std::jthread send_thread{ &App::Send, this };
 	std::jthread recv_thread{ &App::Receive, this };
 
-
+	glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
 	glfwSetWindowUserPointer(window->m_get, this);
 	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));

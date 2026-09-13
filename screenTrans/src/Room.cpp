@@ -95,7 +95,7 @@ void Room::sendMsg(Client* client, Room* room) {
 				}
 				c->Send(*pk_size);
 				for (auto& pk : packets) {
-					c->Send(pk);
+					c->Send(std::move(pk));
 				}
 			});
 		}

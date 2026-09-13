@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <execution>
 #include <mutex>
+#include <utility>
+#include <cassert>
 
 namespace TM {
 
@@ -131,7 +133,9 @@ namespace TM {
         bool Send(vec data) {
             using elem_t = typename vec::value_type;
             std::for_each(data.begin(), data.end(), [](elem_t& elem) { elem = host_to_network(elem); });
-            return Send(data.data(), (msg_size)(sizeof(elem_t) * data.size()));
+            const size_t bytes = sizeof(elem_t) * data.size();
+            assert(std::in_range<msg_size>(bytes));
+            return Send(data.data(), static_cast<msg_size>(bytes));
         }
 
 		template<CNumberType T>

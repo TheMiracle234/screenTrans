@@ -103,8 +103,9 @@ namespace audio {
     }
 
     std::vector<float> Capture::Frames() {
-        std::vector<float> res(m_buf.read_available());
-        m_buf.pop(res.data());
+        const size_t framesCount = m_buf.read_available();
+        std::vector<float> res(framesCount);
+        m_buf.pop(res.data(), framesCount);
         return res;
     }
 

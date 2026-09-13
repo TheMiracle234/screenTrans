@@ -25,8 +25,8 @@ void App::register_handle(std::optional<Client> c) {
 		}break;
 		case Page::choose: {
 			auto pre = c->ReceiveParseTo<bool>();
-			if (!pre.has_value()) { println(__LINE__); page = Page::interrupted; break; }
-			if (*pre) { println(__LINE__); page = Page::listen; break; }
+			if (!pre.has_value()) { page = Page::interrupted; break; }
+			if (*pre) { page = Page::listen; break; }
 			auto choice = c->ReceiveParseTo<Choice>();
 			if (!choice) { page = Page::listen; break; }
 			else {
@@ -38,11 +38,11 @@ void App::register_handle(std::optional<Client> c) {
 		}break;
 		case Page::make_room: {
 			auto pre = c->ReceiveParseTo<bool>();
-			if (!pre.has_value()) { println(__LINE__); page = Page::interrupted; break; }
-			else if (*pre) { println(__LINE__); page = Page::choose; break; }
+			if (!pre.has_value()) { page = Page::interrupted; break; }
+			else if (*pre) { page = Page::choose; break; }
 
 			auto passwd = c->ReceiveParseTo<uint32_t>();
-			if (!passwd.has_value()) { println(__LINE__); page = Page::interrupted; break; }
+			if (!passwd.has_value()) { page = Page::interrupted; break; }
 
 			auto room = std::make_unique<Room>(*passwd);
 			c->Send(room->id());

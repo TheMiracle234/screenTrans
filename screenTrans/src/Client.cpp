@@ -42,10 +42,10 @@ namespace TM {
 
 	msg_size Client::send_all(SOCKET s, const char* buf, msg_size len)
 	{
+		assert(len >= 0);
 		msg_size total = 0;
 		while (total < len) {
-			int sent = send(s, buf + total, static_cast<int>(len - total), 0
-			);
+			int sent = send(s, buf + total, static_cast<int>(len - total), 0);
 			if (sent <= 0)
 				return sent;
 			total += sent;
@@ -57,7 +57,8 @@ namespace TM {
 	{
 		int ret;
 		//send length
-		msg_size len = (msg_size)data.size();
+		assert(std::in_range<msg_size>(data.size()));
+		msg_size len = static_cast<msg_size>(data.size());
 		msg_size net_len = host_to_network(len);
 
 		ret = send_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
@@ -91,11 +92,13 @@ namespace TM {
 	}
 
 	bool Client::Send(const void* data, msg_size len) {
+		assert(len >= 0);
 		return Send(std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(data), reinterpret_cast<const uint8_t*>(data) + len));
 	}
 
 	bool Client::Send(const std::string& str)
 	{
+		assert(std::in_range<msg_size>(str.length() + 1));
 		return this->Send(
 			std::vector<uint8_t>(
 				reinterpret_cast<const uint8_t*>(str.data()), reinterpret_cast<const uint8_t*>( str.data() + str.length() + 1 )
@@ -105,7 +108,7 @@ namespace TM {
 
 	std::optional<std::vector<uint8_t>> Client::Receive() {
 		msg_size net_len;
-		int ret = recv_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
+		msg_size ret = recv_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
 		if (ret < 0) {
 			int code = WSAGetLastError();
 			TM_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
