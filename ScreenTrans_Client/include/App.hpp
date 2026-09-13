@@ -5,8 +5,9 @@
 #include <Socket.h>
 #include <H264Encoder.h>
 #include <H264Decoder.h>
-#include <AudioPlay.h>
 #include <AudioCapture.h>
+#include <audio/Player.hpp>
+#include <audio/User.hpp>
 #include <ScreenCapture.h>
 #include <st_signals.h>
 #include <Room.h>
@@ -19,6 +20,8 @@
 #include <algorithm>
 #include <unordered_map>
 #include <chrono>
+
+#include <boost/lockfree/spsc_queue.hpp>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -65,6 +68,16 @@ inline constexpr size_t KEEP_FRAMES = 4;
 inline constexpr double MAX_MAX_FPS = 150.0;
 inline constexpr double MIN_MAX_FPS = 5.0;
 
+namespace audio {
+	inline constexpr uint32_t sampleRate = 48000;
+	inline constexpr uint32_t channels = 2;
+	inline constexpr uint32_t periodSizeInFrames = 960;
+	static_assert(sampleRate% periodSizeInFrames == 0);
+	inline constexpr double periodSec = static_cast<double>(periodSizeInFrames) / sampleRate;
+	inline constexpr int mixPeriods = 5;
+	inline constexpr int bufSec = 1;
+}
+
 #if USE_IMGUI
 namespace ImGui {
 	void DockingSpace();
@@ -81,6 +94,7 @@ private:
 	void Receive();
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
+	void audioMix();
 private:
 	void pageRenderBegin(const char* title, int sleepTime);
 	void pageRenderEnd();
@@ -129,12 +143,17 @@ public:
 	std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
 	std::string chosen_user; // init with self
-	std::unordered_map<std::string, SOCKET> users; // init with self
-
+	struct User{
+		SOCKET skt{ INVALID_SOCKET };
+		boost::lockfree::spsc_queue<float> audioBuf{ audio::sampleRate * audio::channels * audio::bufSec };
+	};
+	std::unordered_map < std::string, User > users; // init with self
+	//boost::lockfree::spsc_queue<float> audioBufGlobal{ audio::sampleRate * audio::channels * audio::bufSec };
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 20;
 
-	AudioPlay ad_player{ 44100, 2, 1024 };
+	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, 1 };
+	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
 	TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
 	App();

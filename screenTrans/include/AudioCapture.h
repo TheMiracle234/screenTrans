@@ -37,6 +37,7 @@ namespace ST {
 
         // std::move
         std::vector<float> Frames();
+        uint64_t audioTimePoint() { return m_audioFramePoint.load(std::memory_order_acquire); }
 
     private:
         static void DataCallback(
@@ -58,6 +59,8 @@ namespace ST {
         std::atomic<int> m_activeCallbacks{ 0 };
         // uint32_t m_sampleRate = 48000;
         uint32_t m_channels = 2;
+        uint64_t m_currframePoint{ 0 };
+        std::atomic<uint64_t> m_audioFramePoint{ 0 };
         // uint32_t m_periodSizeInFrames = 256;
         ma_device m_device{};
         std::vector<float> m_frames;

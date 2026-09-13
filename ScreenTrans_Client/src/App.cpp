@@ -68,8 +68,8 @@ send: signals, id (, name, audio_frames(, pk_size, pk[n]))
 void App::Receive() {
 	H264Decoder decoder;
 
-	ad_player.Start();
-
+	//ad_player.Start();
+	audioPlayer.start();
 	while (!close_signal) {
 		{
 			std::lock_guard lock(mtx_close);
@@ -83,7 +83,7 @@ void App::Receive() {
 			auto id = client.ReceiveParseTo<SOCKET>();
 			{
 				std::lock_guard lock(mtx_users);
-				auto count = std::erase_if(users, [&](auto& user) { return user.second == *id;});
+				auto count = std::erase_if(users, [&](auto& user) { return user.second.skt == *id;});
 			}
 			{
 				std::lock_guard lock(mtx_choiceChange);
@@ -95,12 +95,18 @@ void App::Receive() {
 
 		auto id = client.ReceiveParseTo<SOCKET>();
 		auto other_name = client.ReceiveString();
-		auto frames = client.ReceiveVec<float>();
-		ad_player.PushFrames(*frames);
 		{
 			std::lock_guard lock(mtx_users);
-			users[*other_name] = *id;
+			auto itr = users.find(*other_name);
+			if (itr == users.end()) {
+				users.emplace(std::pair(*other_name, *id));
+			}
+			else {
+				itr->second.skt = *id;
+			}
 		}
+		auto frames = client.ReceiveVec<float>();
+		users[*other_name].audioBuf.push(frames->begin(), frames->end());
 
 		if (*signals & signal_choiceNotMatch) {
 			continue;
@@ -159,7 +165,7 @@ void App::Send() {
 	constexpr int bitrate = 4000000;
 	ST::H264Encoder encoder(w, h, fps, bitrate);
 
-	AudioCapture ad_cpt{ 44100, 2, 1024 };
+	AudioCapture ad_cpt{ audio::sampleRate, audio::channels, audio::periodSizeInFrames };
 	ad_cpt.Start();
 
 	auto last_time = std::chrono::steady_clock::now();
@@ -194,7 +200,7 @@ void App::Send() {
 		client.Send(ad_cpt.Frames());//move
 		{
 			std::lock_guard lock(mtx_users);
-			client.Send(users[chosen_user]);
+			client.Send(users[chosen_user].skt);
 		}
 		client.Send(pk_size);
 		for (auto& pk : packets) {
@@ -204,9 +210,28 @@ void App::Send() {
 	}
 }
 
+void App::audioMix() {
+	const size_t samples = audio::mixPeriods * audio::periodSizeInFrames * audio::channels;
+	std::vector<float> mixBuf(samples);
+	std::vector<float> getBuf(samples);
+	while (!client.Closed()) {
+		std::fill(mixBuf.begin(), mixBuf.end(), 0.0f);
+		size_t realSamples{ 0 };
+		for (auto& user : users) {
+			size_t thisSamples = user.second.audioBuf.pop(getBuf.data(), samples);
+			realSamples = std::max(realSamples, thisSamples);
+			for (size_t i = 0;i < thisSamples;++i) {
+				mixBuf[i] += getBuf[i];
+			}
+		}
+		audioUser.pushFrames(mixBuf.data(), realSamples);
+	}
+}
+
 App::Page App::Show() {
 	chosen_user = logger.name;
-	users[chosen_user] = client.Id();
+	users.emplace(std::pair(chosen_user, client.Id()));
+	std::jthread audioMix_thread{ &App::audioMix, this };
 	std::jthread send_thread{ &App::Send, this };
 	std::jthread recv_thread{ &App::Receive, this };
 
@@ -345,7 +370,7 @@ void main(){
 						if (ImGui::Selectable(user.first.c_str())) {
 							std::lock_guard lock(mtx_choiceChange);
 							chosen_user = user.first;
-							println("chosen socket: " << user.second);
+							println("chosen socket: " << user.second.skt);
 						}
 					}
 				}
