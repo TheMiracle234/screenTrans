@@ -9,6 +9,11 @@
 
 #define println(x) std::cout<< x << "\n"
 #define print(x) std::cout<< x
+#ifndef NDEBUG
+#	define PL println(__LINE__)
+#else
+#	define PL
+#endif
 //#define pv(x) std::cout<< #x << ": " << x << "\n"
 
 /*

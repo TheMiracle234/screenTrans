@@ -1,6 +1,5 @@
 ﻿#include <miniaudio.h>
 #include <boost/lockfree/spsc_queue.hpp>
-#include <boost/circular_buffer.hpp>
 #include <vector>
 namespace audio {
 	class User {

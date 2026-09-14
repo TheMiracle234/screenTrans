@@ -10,20 +10,23 @@
 #include <vector>
 #include <mutex>
 
+#include <boost/lockfree/spsc_queue.hpp>
+
 #include "ST_API.h"
 
-namespace ST {
+namespace audio {
 
-    class ST_API AudioCapture
+    class ST_API Capture
     {
     public:
-        AudioCapture(
-            uint32_t sampleRate = 44100,
-            uint32_t channels = 2,
-            uint32_t periodSizeInFrames = 1024
+        Capture(
+            uint32_t sampleRate,
+            uint32_t channels,
+            uint32_t periodSizeInFrames,
+            int bufSec
         );
 
-        ~AudioCapture();
+        ~Capture();
 
         void Reset(
             uint32_t sampleRate = 44100,
@@ -37,7 +40,6 @@ namespace ST {
 
         // std::move
         std::vector<float> Frames();
-        uint64_t audioTimePoint() { return m_audioFramePoint.load(std::memory_order_acquire); }
 
     private:
         static void DataCallback(
@@ -57,14 +59,11 @@ namespace ST {
         bool m_initiated = false;
         std::atomic<bool> m_running = false;
         std::atomic<int> m_activeCallbacks{ 0 };
-        // uint32_t m_sampleRate = 48000;
         uint32_t m_channels = 2;
-        uint64_t m_currframePoint{ 0 };
-        std::atomic<uint64_t> m_audioFramePoint{ 0 };
-        // uint32_t m_periodSizeInFrames = 256;
         ma_device m_device{};
-        std::vector<float> m_frames;
-        std::mutex m_mtx_fs{};
+        //std::vector<float> m_frames;
+        boost::lockfree::spsc_queue<float> m_buf;
+        //std::mutex m_mtx_fs{};
     };
 
 }
