@@ -136,18 +136,20 @@ public:
 		uint32_t passwd{ Room::invalid_passwd };
 	} logger;
 	Page page;
+	
 	std::mutex mtx_video_frames;
 	std::mutex mtx_close;
 	std::mutex mtx_users;
-	std::mutex mtx_choiceChange;
+	//std::mutex mtx_choiceChange;
+
 	std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
-	std::string chosen_user; // init with self
+	std::atomic<SOCKET> chosen_user; // init with self
 	struct User{
-		SOCKET skt{ INVALID_SOCKET };
+		std::string name;
 		boost::lockfree::spsc_queue<float> audioBuf{ audio::sampleRate * audio::channels * audio::bufSec };
 	};
-	std::unordered_map < std::string, User > users; // init with self
+	std::unordered_map < SOCKET, User > users; // init with self
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 20;
 

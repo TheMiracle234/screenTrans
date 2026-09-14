@@ -38,7 +38,6 @@ void Room::sendMsg(Client* client, Room* room) {
 	Flag0 flags = 0;
 	SOCKET last_chosen_socket = INVALID_SOCKET;
 	for (;;) {
-		PL;
 		if (client->Closed() && flags & flag_closedSignalSent)
 		{
 			break;

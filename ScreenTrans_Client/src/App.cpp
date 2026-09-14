@@ -71,7 +71,6 @@ void App::Receive() {
 	//ad_player.Start();
 	audioPlayer.start();
 	while (!close_signal) {
-		PL;
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed())
@@ -84,12 +83,9 @@ void App::Receive() {
 			auto id = client.ReceiveParseTo<SOCKET>();
 			{
 				std::lock_guard lock(mtx_users);
-				auto count = std::erase_if(users, [&](auto& user) { return user.second.skt == *id;});
+				auto count = std::erase_if(users, [&](auto& user) { return user.first == *id;});
 			}
-			{
-				std::lock_guard lock(mtx_choiceChange);
-				chosen_user = logger.name;
-			}
+			chosen_user.store(client.Id(), std::memory_order_release);
 			continue;
 		}
 
@@ -99,14 +95,9 @@ void App::Receive() {
 		auto frames = client.ReceiveVec<float>();
 		{
 			std::lock_guard lock(mtx_users);
-			auto itr = users.find(*other_name);
-			if (itr == users.end()) {
-				users.emplace(std::pair(*other_name, *id));
-			}
-			else {
-				itr->second.skt = *id;
-			}
-			users[*other_name].audioBuf.push(frames->begin(), frames->end());
+			auto [itr, first] = users.try_emplace(*id);
+			itr->second.name = *other_name;
+			users[*id].audioBuf.push(frames->begin(), frames->end());
 		}
 
 		if (*signals & signal_choiceNotMatch) {
@@ -171,7 +162,6 @@ void App::Send() {
 
 	auto last_time = std::chrono::steady_clock::now();
 	loop{
-		PL;
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>(1.0 / max_fps_data.load(std::memory_order_acquire))
 		);
@@ -202,7 +192,7 @@ void App::Send() {
 		client.Send(ad_cpt.Frames());//move
 		{
 			std::lock_guard lock(mtx_users);
-			client.Send(users[chosen_user].skt);
+			client.Send(chosen_user.load(std::memory_order_acquire));
 		}
 		client.Send(pk_size);
 		for (auto& pk : packets) {
@@ -216,7 +206,11 @@ void App::audioMix() {
 	const size_t samples = audio::mixPeriods * audio::periodSizeInFrames * audio::channels;
 	std::vector<float> mixBuf(samples);
 	std::vector<float> getBuf(samples);
-	while (!client.Closed()) {
+	for (;;) {
+		{
+			std::lock_guard lock(mtx_close);
+			if (client.Closed()) { break; }
+		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		std::fill(mixBuf.begin(), mixBuf.end(), 0.0f);
 		size_t realSamples{ 0 };
@@ -230,13 +224,24 @@ void App::audioMix() {
 				}
 			}
 		}
+		auto max_it = std::ranges::max_element(mixBuf, [](float v1, float v2) { return std::abs(v1) < std::abs(v2); });
+		if (max_it != mixBuf.end()) {
+			float maxVal = std::abs(*max_it);
+			if (maxVal > 1.0f) {
+				std::ranges::for_each(mixBuf, [maxVal](float& v) { v /= maxVal; });
+			}
+		}
 		audioUser.pushFrames(mixBuf.data(), realSamples);
 	}
 }
 
 App::Page App::Show() {
-	chosen_user = logger.name;
-	users.emplace(std::pair(chosen_user, client.Id()));
+	chosen_user.store(client.Id(), std::memory_order_release);
+	{
+		std::lock_guard lock2{ mtx_users };
+		auto [itr, first] = users.try_emplace(chosen_user.load(std::memory_order_acquire));
+		itr->second.name = logger.name;
+	}
 	std::jthread audioMix_thread{ &App::audioMix, this };
 	std::jthread send_thread{ &App::Send, this };
 	std::jthread recv_thread{ &App::Receive, this };
@@ -369,13 +374,12 @@ void main(){
 			max_fps_data.store(fd, std::memory_order_release);
 			max_fps_video.store(fv, std::memory_order_release);
 			ImGui::Text("target:");
-			if (ImGui::BeginCombo("##combo", chosen_user.c_str())) {
+			if (ImGui::BeginCombo("##combo", users[chosen_user.load(std::memory_order_acquire)].name.c_str())) {
 				{
 					std::lock_guard lock(mtx_users);
 					for (const auto& user : users) {
-						if (ImGui::Selectable(user.first.c_str())) {
-							std::lock_guard lock(mtx_choiceChange);
-							chosen_user = user.first;
+						if (ImGui::Selectable(user.second.name.c_str())) {
+							chosen_user.store(user.first, std::memory_order_release);
 							println("chosen socket: " << user.second.skt);
 						}
 					}
