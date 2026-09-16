@@ -17,7 +17,7 @@ extern "C" {
 
 #if USE_IMGUI
 namespace ImGui {
-	void DockingSpace() {
+	static void DockingSpace() {
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->WorkPos);
 		ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -255,7 +255,6 @@ App::Page App::Show() {
 	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
 		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
 		glViewport(0, 0, width, height);
-		user->window->updatePos({ width, height });
 		user->window->setViewport({ 0,0,width, height });
 		});
 
@@ -374,17 +373,19 @@ void main(){
 			max_fps_data.store(fd, std::memory_order_release);
 			max_fps_video.store(fv, std::memory_order_release);
 			ImGui::Text("target:");
-			if (ImGui::BeginCombo("##combo", users[chosen_user.load(std::memory_order_acquire)].name.c_str())) {
-				{
-					std::lock_guard lock(mtx_users);
-					for (const auto& user : users) {
-						if (ImGui::Selectable(user.second.name.c_str())) {
-							chosen_user.store(user.first, std::memory_order_release);
-							println("chosen socket: " << user.second.skt);
+			{
+				std::lock_guard lock(mtx_users);
+				if (ImGui::BeginCombo("##combo", users[chosen_user.load(std::memory_order_acquire)].name.c_str())) {
+					{
+						for (const auto& user : users) {
+							if (ImGui::Selectable(user.second.name.c_str())) {
+								chosen_user.store(user.first, std::memory_order_release);
+								println("chosen socket: " << user.first);
+							}
 						}
 					}
+					ImGui::EndCombo();
 				}
-				ImGui::EndCombo();
 			}
 			ImGui::End();// settings
 		}
@@ -638,8 +639,14 @@ App::App() {
 	style->ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
 	style->FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
 
+	ImFontConfig fontConfig{};
+
+	fontConfig.OversampleH = 2;
+	fontConfig.OversampleV = 2;
+
 	//io.Fonts->Clear();
-	io->Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, nullptr, io->Fonts->GetGlyphRangesChineseFull());
+	io->Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, &fontConfig, io->Fonts->GetGlyphRangesChineseFull());
+	//io->Fonts->AddFontFromFileTTF("C:/Windows/Fonts/msyh.ttc", 15.0f, &fontConfig, io->Fonts->GetGlyphRangesChineseFull());
 	//io.Fonts->Build();
 	//io.Fonts->AddFontFromFileTTF("font/msyh.ttc", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
 
