@@ -557,12 +557,11 @@ App::Page App::serverStatusError() {
 }
 
 App::Page App::connectToServer() {
-	client = Client{ TM::Socket::TCP, Socket::IPV4 };
-	println("your socket: " << client.Id());
 	logger.name = {};
 
 	bool first{ true };
 	loop {
+		client = Client{ TM::Socket::TCP, Socket::IPV4 };
 		loop {
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
@@ -576,6 +575,8 @@ App::Page App::connectToServer() {
 			if (ok && ImGui::Button("connect")) { break; }
 		}
 		if (client.ConnectTo(p1.ipv4, p1.port)) {
+			println(p1.ipv4);
+			println(p1.port);
 			println("connected to server successfully");
 			break;
 		}
@@ -585,7 +586,8 @@ App::Page App::connectToServer() {
 		}
 	}
 	logger.name = p1.name;
-	println(logger.name);
+	println("socket: " << client.Id());
+	println("name: " << logger.name);
 	return Page::chooseMode;
 }
 

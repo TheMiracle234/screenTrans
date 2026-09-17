@@ -70,8 +70,21 @@ namespace TM {
 		Socket();
 		Socket(const Socket& other) = delete;
 		Socket& operator=(const Socket& other) = delete;
-		Socket(Socket&& other) noexcept : id(other.id) { std::lock_guard lock(mtx_obj_life); ++count; other.id = INVALID_SOCKET; }
-		Socket& operator=(Socket&& other) noexcept { id = other.id; other.id = INVALID_SOCKET; return *this; }
+		Socket(Socket&& other) noexcept { 
+			if (&other == this) { return; }
+			std::lock_guard lock(mtx_obj_life); 
+			Close();
+			id = other.id;
+			++count; 
+			other.id = INVALID_SOCKET; 
+		}
+		Socket& operator=(Socket&& other) noexcept { 
+			if (&other == this) { return *this; }
+			Close();
+			id = other.id; 
+			other.id = INVALID_SOCKET; 
+			return *this; 
+		}
 		~Socket();
 
 		void Close();
