@@ -24,7 +24,7 @@ namespace audio {
         void reset(uint32_t sampleRate, uint32_t channels, uint32_t periodSizeInFrames, void* user, ma_device_data_proc dataCallBack);
         bool start();
         void stop();
-        const ma_device& device() const { m_device; }
+        const ma_device& device() const { return m_device; }
         uint32_t periodSizeInFrames() { return m_periodSizeInFrames; }
     private:
         void init(uint32_t sampleRate, uint32_t channels, uint32_t periodSizeInFrames, void* user, ma_device_data_proc dataCallBack);

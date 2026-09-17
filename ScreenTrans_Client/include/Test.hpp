@@ -1,6 +1,18 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
 #pragma once
+#define USE_IMGUI 1
+
+#if	USE_IMGUI
+#	include "imgui.h"
+#	include "imgui_impl_glfw.h"
+#	include "imgui_impl_opengl3.h"
+
+#	if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
+#		pragma comment(lib, "legacy_stdio_definitions")
+#	endif
+#endif
+
 //#include <Client.h>
 //#include <Socket.h>
 //#include <Room.h>
@@ -35,17 +47,6 @@
 #include <gl/Render.h>
 #include <gl/Texture.h>
 
-#define USE_IMGUI 1
-
-#if	USE_IMGUI
-#	include "imgui.h"
-#	include "imgui_impl_glfw.h"
-#	include "imgui_impl_opengl3.h"
-
-#	if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#		pragma comment(lib, "legacy_stdio_definitions")
-#	endif
-#endif
 
 #ifndef NDEBUG
 #	define print(x) std::cout<< x
@@ -150,7 +151,7 @@ public:
 	std::atomic<double> max_fps_video = 20;
 
 	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
-	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
+	//audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
 	//TM::Client client{ Socket::TCP, Socket::IPV4 };
 public:
 	App();

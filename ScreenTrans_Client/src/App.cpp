@@ -190,10 +190,7 @@ void App::Send() {
 		client.Send(client.Id());
 		client.Send(logger.name);
 		client.Send(ad_cpt.Frames());//move
-		{
-			std::lock_guard lock(mtx_users);
-			client.Send(chosen_user.load(std::memory_order_acquire));
-		}
+		client.Send(chosen_user.load(std::memory_order_acquire));
 		client.Send(pk_size);
 		for (auto& pk : packets) {
 			client.Send(pk);
@@ -375,13 +372,13 @@ void main(){
 			ImGui::Text("target:");
 			{
 				std::lock_guard lock(mtx_users);
-				if (ImGui::BeginCombo("##combo", users[chosen_user.load(std::memory_order_acquire)].name.c_str())) {
-					{
-						for (const auto& user : users) {
-							if (ImGui::Selectable(user.second.name.c_str())) {
-								chosen_user.store(user.first, std::memory_order_release);
-								println("chosen socket: " << user.first);
-							}
+				auto chosen = users.find(chosen_user.load(std::memory_order_acquire));
+				assert(chosen != users.end());
+				if (ImGui::BeginCombo("##combo", users[chosen->first].name.c_str())) {
+					for (const auto& user : users) {
+						if (ImGui::Selectable(user.second.name.c_str())) {
+							chosen_user.store(user.first, std::memory_order_release);
+							println("chosen socket: " << user.first);
 						}
 					}
 					ImGui::EndCombo();
@@ -473,20 +470,18 @@ void App::pageRenderEnd() {
 }
 
 App::Page App::chooseMode() {
-	Choice choice{ 0 };
 	while(1) {
 		PageRenderGuard pageRenderGuard{ this, "choose mode", 20 };
 		if (ImGui::Button("<-")) { client.Send(true); return Page::connectToServer; }
-		ImGui::RadioButton("enter a room", &choice, choice_enter_room);
-		ImGui::RadioButton("make a room", &choice, choice_make_room);
-		if (choice == choice_invalid) { continue; }
-		if (ImGui::Button("->")) { 
+		if (ImGui::Button("enter a room")) {
 			client.Send(false);
-			client.Send(choice);
-			switch (choice) {
-			case choice_enter_room: return Page::enterRoom;break;
-			case choice_make_room: return Page::makeRoom;break;
-			}
+			client.Send(choice_enter_room);
+			return Page::enterRoom;
+		}
+		if (ImGui::Button("make a room")) {
+			client.Send(false);
+			client.Send(choice_make_room);
+			return Page::makeRoom;
 		}
 	}
 	return Page::never;
@@ -499,12 +494,13 @@ App::Page App::makeRoom() {
 		while (1) {
 			PageRenderGuard PageRenderGuard{ this, "passwd", 20 };
 			if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
-			ImGui::InputScalar("passwd", ImGuiDataType_U32, &logger.passwd);
-			if (logger.passwd == Room::invalid_passwd) {
+			ImGui::InputScalar("passwd", ImGuiDataType_U32, &p2.passwd);
+			if (p2.passwd == Room::invalid_passwd) {
 				ImGui::Text("invalid passwd: %d", (int)Room::invalid_passwd);
 			}
 			else if(ImGui::Button("->")) { break; }
 		}
+		logger.passwd = p2.passwd;
 		client.Send(false);
 		client.Send(logger.passwd);
 		auto room_id0 = client.ReceiveParseTo<uint32_t>();
@@ -519,26 +515,24 @@ App::Page App::makeRoom() {
 App::Page App::enterRoom() {
 	logger.room_id = Room::invalid_id;
 	logger.passwd = Room::invalid_passwd;
-	uint32_t room_id{ Room::invalid_id };
-	uint32_t passwd{ Room::invalid_passwd };
 	bool room_id_not_exist{ false };
 	bool passwd_wrong{ false };
 	for (;;) {
 		PageRenderGuard pageRenderGuard(this, "enter room", 20);
 		if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
-		ImGui::InputScalar("room_id", ImGuiDataType_U32, &room_id);
-		ImGui::InputScalar("passwd", ImGuiDataType_U32, &passwd);
+		ImGui::InputScalar("room_id", ImGuiDataType_U32, &p3.room_id);
+		ImGui::InputScalar("passwd", ImGuiDataType_U32, &p3.passwd);
 		ImGui::Text("both: 1~4294967295");
 		bool want_continue{ false };
-		if (room_id == Room::invalid_id)	{ ImGui::Text("room_id format invalid"); want_continue = true; } 
-		if (passwd == Room::invalid_passwd) { ImGui::Text("passwd format invalid"); want_continue = true; } 
+		if (p3.room_id == Room::invalid_id)	{ ImGui::Text("room_id format invalid"); want_continue = true; }
+		if (p3.passwd == Room::invalid_passwd) { ImGui::Text("passwd format invalid"); want_continue = true; }
 		if (want_continue) { continue; }
 		if (room_id_not_exist)	{ ImGui::Text("room id not exist"); } 
 		if (passwd_wrong)		{ ImGui::Text("passwd wrong"); }
 		if (ImGui::Button("->")) {
 			client.Send(false);
-			client.Send(room_id);
-			client.Send(passwd);
+			client.Send(p3.room_id);
+			client.Send(p3.passwd);
 			auto room_id_ok = client.ReceiveParseTo<bool>();
 			if (!room_id_ok.has_value()){ return Page::serverStatusError; }
 			if (!room_id_ok.value())	{ room_id_not_exist = true; continue; }
@@ -550,8 +544,8 @@ App::Page App::enterRoom() {
 			break;
 		}
 	}
-	logger.passwd = passwd;
-	logger.room_id = room_id;
+	logger.passwd = p3.passwd;
+	logger.room_id = p3.room_id;
 	return Page::Show;
 }
 
@@ -564,28 +558,24 @@ App::Page App::serverStatusError() {
 
 App::Page App::connectToServer() {
 	client = Client{ TM::Socket::TCP, Socket::IPV4 };
+	println("your socket: " << client.Id());
 	logger.name = {};
-	constexpr size_t buf_size = 256;
-	char ipv4[buf_size]{};
-	constexpr uint32_t invalid_port{ 0 };
-	uint32_t port{ invalid_port };
-	char name[buf_size]{};
 
 	bool first{ true };
 	loop {
 		loop {
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
-			ImGui::InputText("target_ipv4", ipv4, buf_size);
-			ImGui::InputScalar("target_port", ImGuiDataType_U32, &port);
-			ImGui::InputText("your_name", name, buf_size, ImGuiInputTextFlags_CharsNoBlank);
+			ImGui::InputText("target_ipv4", p1.ipv4, p1.buf_size);
+			ImGui::InputScalar("target_port", ImGuiDataType_U32, &p1.port);
+			ImGui::InputText("your_name", p1.name, p1.buf_size, ImGuiInputTextFlags_CharsNoBlank);
 			bool ok{ true };
-			if (!first)					{ ImGui::Text("connect failed"); ok = false; } 
-			if (strlen(name) == 0)		{ ImGui::Text("name should not be blank"); ok = false; }
-			if (port == invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", port); ok = false; }
+			if (!first)						{ ImGui::Text("connect failed"); } 
+			if (strlen(p1.name) == 0)		{ ImGui::Text("name should not be blank"); ok = false; }
+			if (p1.port == p1.invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", p1.port); ok = false; }
 			if (ok && ImGui::Button("connect")) { break; }
 		}
-		if (client.ConnectTo(ipv4, port)) {
+		if (client.ConnectTo(p1.ipv4, p1.port)) {
 			println("connected to server successfully");
 			break;
 		}
@@ -594,7 +584,7 @@ App::Page App::connectToServer() {
 			first = false;
 		}
 	}
-	logger.name = name;
+	logger.name = p1.name;
 	println(logger.name);
 	return Page::chooseMode;
 }

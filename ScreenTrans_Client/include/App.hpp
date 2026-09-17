@@ -1,6 +1,21 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
 #pragma once
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#define USE_IMGUI 1
+
+#if	USE_IMGUI
+#	include "imgui.h"
+#	include "imgui_impl_glfw.h"
+#	include "imgui_impl_opengl3.h"
+
+#	if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
+#		pragma comment(lib, "legacy_stdio_definitions")
+#	endif
+#endif
+
 #include <Client.h>
 #include <Socket.h>
 #include <H264Encoder.h>
@@ -23,9 +38,6 @@
 
 #include <boost/lockfree/spsc_queue.hpp>
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-
 #include <gl/Window.h>
 #include <gl/Shader.h>
 #include <gl/VertexArray.h>
@@ -33,18 +45,6 @@
 #include <gl/IndexBuffer.h>
 #include <gl/Render.h>
 #include <gl/Texture.h>
-
-#define USE_IMGUI 1
-
-#if	USE_IMGUI
-#	include "imgui.h"
-#	include "imgui_impl_glfw.h"
-#	include "imgui_impl_opengl3.h"
-
-#	if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
-#		pragma comment(lib, "legacy_stdio_definitions")
-#	endif
-#endif
 
 #ifndef NDEBUG
 #	define print(x) std::cout<< x
@@ -98,7 +98,7 @@ private:
 		~PageRenderGuard() { p->pageRenderEnd(); }
 	};
 	friend struct PageRenderGuard;
-	enum class Page {
+	enum class Page : uint8_t{
 		connectToServer,
 		chooseMode,
 		makeRoom,
@@ -108,12 +108,32 @@ private:
 		never,
 		//count,
 	};
+	struct P1 {
+		static inline constexpr size_t buf_size = 256;
+		char ipv4[buf_size]{};
+		static inline constexpr uint32_t invalid_port{ 0 };
+		uint32_t port{ invalid_port };
+		char name[buf_size]{};
+	}p1;
 	Page connectToServer();
+
 	Page chooseMode();
+	
+	struct P2 {
+		uint32_t passwd{ Room::invalid_passwd };
+	}p2;
 	Page makeRoom();
+
+	struct P3 {
+		uint32_t room_id{ Room::invalid_id };
+		uint32_t passwd{ Room::invalid_passwd };
+	}p3;
 	Page enterRoom();
+	
 	Page serverStatusError();
+	
 	Page Show();
+
 public:
 	gl::GlfwInitGuard glfwInitGuard;
 	std::unique_ptr<gl::Window> window{ makeWindow()};
