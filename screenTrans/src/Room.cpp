@@ -6,7 +6,8 @@
 #include <cassert>
 #include <random>
 #include <execution>
-
+#undef max
+#undef min
 #define println(x) std::cout<< x << "\n"
 #define print(x) std::cout<< x
 #ifndef NDEBUG
@@ -38,43 +39,48 @@ void Room::sendMsg(ClientMtx* clientMtx, Room* room) {
 	Flag0 flags = 0;
 	std::atomic<bool> closedSignalSent{false};
 	net::socket_t last_chosen_socket = net::invalid_socket;
-	for (;;) {
-		if (client->Closed() && closedSignalSent.load(std::memory_order_acquire))
-		{
-			break;
-		}
-
-		auto id = client->ReceiveParseTo<net::socket_t>();
-		auto name = client->ReceiveString();
-		auto audio_frames = client->ReceiveVec<float>();
-		auto choose_socket = client->ReceiveParseTo<net::socket_t>();
-		auto pk_size = client->ReceiveParseTo<int32_t>();
-
+	struct {
+		net::socket_t id;
+		std::string name;
+		std::vector<float> audio_frames;
+		net::socket_t choose_socket;
+		int32_t pk_size;
 		std::vector<std::vector<uint8_t>> packets;
+	}rv;
+	for (;;) {
+		if (client->Closed() && closedSignalSent.load(std::memory_order_acquire)) { break; }
+		client->ReceiveBy(rv.id);
+		client->ReceiveBy(rv.name);
+		client->ReceiveBy(rv.audio_frames);
+		client->ReceiveBy(rv.choose_socket);
+		client->ReceiveBy(rv.pk_size);
+		int32_t packet_count{};
+		//std::vector<std::vector<uint8_t>> packets;
 		if (!client->Closed()) {
 			if (save_id == net::invalid_socket) { // since there always be at least one loop, this "=" will always be done
-				save_id = *id;
+				save_id = rv.id;
 				println("connected to client socket: " << save_id);
 			}
 
-			if (!(flags & flag_clientChoiceRecorded) || (*choose_socket != last_chosen_socket)) {
+			if (!(flags & flag_clientChoiceRecorded) || (rv.choose_socket != last_chosen_socket)) {
 				{
 					std::lock_guard lock(room->m_mutex_choices);
-					room->m_choices_of[client->Id()] = *choose_socket;
+					room->m_choices_of[client->Id()] = rv.choose_socket;
 				}
-				last_chosen_socket = *choose_socket;
+				last_chosen_socket = rv.choose_socket;
 				flags |= flag_clientChoiceRecorded;
 			}
 
-			packets = std::vector<std::vector<uint8_t>>(client->Closed() ? 0 : *pk_size);
-			for (auto& pk : packets) {
-				auto tmp = client->Receive();
-				pk = std::move(*tmp);
+			packet_count = client->Closed() ? 0 : rv.pk_size;
+			rv.packets.resize(std::max(rv.packets.size(), (size_t)packet_count));
+			for (int32_t i = 0;i < packet_count;++i) {
+				client->ReceiveBy(rv.packets[i]);
 			}
 		}
 		{
 			std::shared_lock lock(room->m_mtx_client_sockets);
-			std::for_each(std::execution::par, room->m_client_sockets.begin(), room->m_client_sockets.end(), [&](std::unique_ptr<ClientMtx>& cm) {
+			std::for_each(std::execution::par, room->m_client_sockets.begin(), room->m_client_sockets.end(), 
+			[&, packet_count](std::unique_ptr<ClientMtx>& cm) {
 				std::lock_guard lock(cm->mtx);
 				Client* c = &cm->client;
 
@@ -89,20 +95,20 @@ void Room::sendMsg(ClientMtx* clientMtx, Room* room) {
 				{
 					std::shared_lock lock_choices(room->m_mutex_choices);
 					auto choice = room->m_choices_of.find(c->Id());
-					choice_isnt_me = choice == room->m_choices_of.end() || choice->second != *id;
+					choice_isnt_me = choice == room->m_choices_of.end() || choice->second != rv.id;
 				}
 				if (choice_isnt_me) { c->Send(signal_choiceNotMatch); }
 				else				{ c->Send(signal_none); }
 
-				c->Send(*id);
-				c->Send(*name);
-				c->Send(*audio_frames);
+				c->Send(rv.id);
+				c->Send(rv.name);
+				c->Send(rv.audio_frames);
 				if (choice_isnt_me) {
 					return;
 				}
-				c->Send(*pk_size);
-				for (auto& pk : packets) {
-					c->Send(pk);
+				c->Send(rv.pk_size);
+				for (int i = 0;i < packet_count;++i) {
+					c->Send(rv.packets[i]);
 				}
 			});
 		}

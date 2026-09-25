@@ -43,6 +43,9 @@ namespace net {
     template <typename T>
     inline constexpr bool is_vector_v = is_vector<T>::value;
 
+    template <typename T>
+    concept CIsVector = is_vector_v<T>;
+
 	using msg_size = int;
 
     namespace tcp {
@@ -58,6 +61,9 @@ namespace net {
             msg_size send_all(socket_t s, const char* buf, msg_size len);
             msg_size recv_all(socket_t s, char* buf, msg_size len);
             Client() = default;
+
+            std::optional<msg_size> recv_bytes();
+            bool recv_msg(void* data, msg_size bytes);
 
         public:
             Client(Ip ip);
@@ -86,17 +92,25 @@ namespace net {
 
             bool Send(std::string_view str);
 
-            [[nodiscard]] std::optional<std::vector<uint8_t>> Receive();
-
             template<CNumberType T>
-            [[nodiscard]] std::optional<T> ReceiveParseTo();
+            bool ReceiveBy(T& out);
 
-            // auto ntoh
-            template<CNumberType T>
-            [[nodiscard]] std::optional<std::vector<T>> ReceiveVec();
+            bool ReceiveBy(std::string& out);
 
-            // make sure the msg sent to you is a string(end by \0)
-            [[nodiscard]] std::optional<std::string> ReceiveString();
+            template<CIsVector Vec>
+            bool ReceiveBy(Vec& out);
+
+            //[[nodiscard]] std::optional<std::vector<uint8_t>> Receive();
+
+            //template<CNumberType T>
+            //[[nodiscard]] std::optional<T> ReceiveParseTo();
+
+            //// auto ntoh
+            //template<CNumberType T>
+            //[[nodiscard]] std::optional<std::vector<T>> ReceiveVec();
+
+            //// make sure the msg sent to you is a string(end by \0)
+            //[[nodiscard]] std::optional<std::string> ReceiveString();
         };
     }
 };

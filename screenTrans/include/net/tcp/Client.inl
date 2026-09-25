@@ -169,7 +169,7 @@ namespace tcp {
 		return Send(str.data(), str.size());
 	}
 
-	inline std::optional<std::vector<uint8_t>> Client::Receive() {
+	inline std::optional<msg_size> Client::recv_bytes() {
 		msg_size net_len;
 		msg_size ret = recv_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
 		if (ret < 0) {
@@ -185,26 +185,145 @@ namespace tcp {
 			return {};
 		}
 		msg_size msg_len = network_to_host(net_len);
-		if (msg_len == 0) {
-			return std::vector<uint8_t>();
-		}
+		return msg_len;
+	}
 
-		std::vector<uint8_t> data(msg_len);
-		ret = recv_all(skt.id, reinterpret_cast<char*>(data.data()), msg_len);
+	inline bool Client::recv_msg(void* data, msg_size bytes) {
+		msg_size ret = recv_all(skt.id, reinterpret_cast<char*>(data), bytes);
 		if (ret < 0) {
 			int code = WSAGetLastError();
 			NET_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
 			if (Socket::CheckClosedByErrorCode(code)) {
 				skt.id = invalid_socket; // server closed
 			}
-			return {};
+			return false;
 		}
-		else if (ret == 0 && msg_len > 0) {
+		else if (ret == 0 && bytes > 0) {
 			skt.id = invalid_socket; // server closed
-			return {};
+			return false;
 		}
-		return data;
+		return true;
 	}
+
+	template<CNumberType T>
+	inline bool Client::ReceiveBy(T& out) {
+		auto o_msg_bytes = recv_bytes();
+		if (!o_msg_bytes) { return false; }
+		msg_size msg_bytes = *o_msg_bytes;
+		if(sizeof(T) != msg_bytes) [[unlikely]] {
+			NET_SOCKET_SET_ERROR("receive not match");
+			return false;
+		}
+		if (!recv_msg(&out, msg_bytes)) {
+			return false;
+		}
+		out = network_to_host(out);
+		return true;
+	}
+
+	inline bool Client::ReceiveBy(std::string& out) {
+		auto o_msg_bytes = recv_bytes();
+		if (!o_msg_bytes) { return false; }
+		msg_size msg_bytes = *o_msg_bytes;
+		out.resize(msg_bytes);
+		if (!recv_msg(out.data(), msg_bytes)) {
+			return false;
+		}
+		return true;
+	}
+
+	template<CIsVector Vec>
+	inline bool Client::ReceiveBy(Vec& out) {
+		bool res{ true };
+		auto o_msg_bytes = recv_bytes();
+		if (!o_msg_bytes) { return false; }
+		msg_size msg_bytes = *o_msg_bytes;
+		using elem_t = typename Vec::value_type;
+		static_assert(!std::same_as<elem_t, bool>);
+		if (msg_bytes % sizeof(elem_t) != 0) [[unlikely]] {
+			NET_SOCKET_SET_ERROR("Receive vector but elem not match size");
+			res = false;
+		}
+		out.resize(msg_bytes / sizeof(elem_t));
+		if (!recv_msg(out.data(), msg_bytes)) {
+			return false;
+		}
+		if constexpr (sizeof(elem_t) > 1) {
+			std::ranges::for_each(out, [](elem_t& e) { e = network_to_host(e); });
+		}
+		return res;
+	}
+
+
+	//inline std::optional<std::vector<uint8_t>> Client::Receive() {
+	//	msg_size net_len;
+	//	msg_size ret = recv_all(skt.id, reinterpret_cast<char*>(&net_len), sizeof(msg_size));
+	//	if (ret < 0) {
+	//		int code = WSAGetLastError();
+	//		NET_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
+	//		if (Socket::CheckClosedByErrorCode(code)) {
+	//			skt.id = invalid_socket; // server closed
+	//		}
+	//		return {};
+	//	}
+	//	else if (ret == 0) {
+	//		skt.id = invalid_socket; // server closed
+	//		return {};
+	//	}
+	//	msg_size msg_len = network_to_host(net_len);
+	//	if (msg_len == 0) {
+	//		return std::vector<uint8_t>();
+	//	}
+
+	//	std::vector<uint8_t> data(msg_len);
+	//	ret = recv_all(skt.id, reinterpret_cast<char*>(data.data()), msg_len);
+	//	if (ret < 0) {
+	//		int code = WSAGetLastError();
+	//		NET_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
+	//		if (Socket::CheckClosedByErrorCode(code)) {
+	//			skt.id = invalid_socket; // server closed
+	//		}
+	//		return {};
+	//	}
+	//	else if (ret == 0 && msg_len > 0) {
+	//		skt.id = invalid_socket; // server closed
+	//		return {};
+	//	}
+	//	return data;
+	//}
+
+	//template<CNumberType T>
+	//inline [[nodiscard]] std::optional<T> Client::ReceiveParseTo() {
+	//	auto data = this->Receive();
+	//	if (!data || data->size() != sizeof(T)) {
+	//		NET_SOCKET_SET_ERROR("receive not match");
+	//		return {};
+	//	}
+	//	T buf;
+	//	memcpy(&buf, data->data(), sizeof(T));
+	//	return network_to_host(buf);
+	//}
+
+	//// auto ntoh
+	//template<CNumberType T>
+	//inline [[nodiscard]] std::optional<std::vector<T>> Client::ReceiveVec() {
+	//	auto bytes = Receive();
+	//	if (!bytes || bytes->size() % sizeof(T) != 0) {
+	//		NET_SOCKET_SET_ERROR("ReceiveVec but elem not match size");
+	//		return {};
+	//	}
+	//	std::vector<T> res(bytes->size() / sizeof(T));
+	//	memcpy(res.data(), bytes->data(), bytes->size());
+	//	std::for_each(res.begin(), res.end(), [](T& elem) { elem = network_to_host(elem); });
+	//	return res;
+	//}
+	//inline std::optional<std::string> Client::ReceiveString() {
+	//	auto str = Receive();
+	//	if (!str) {
+	//		return {};
+	//	}
+	//	return std::string(reinterpret_cast<const char*>(str->data()), str->size());
+	//}
 
 	inline msg_size Client::recv_all(socket_t s, char* buf, msg_size len) {
 		msg_size total = 0;
@@ -216,19 +335,13 @@ namespace tcp {
 		return total;
 	}
 
-	inline std::optional<std::string> Client::ReceiveString(){
-		auto str = Receive();
-		if (!str) {
-			return {};
-		}
-		return std::string(reinterpret_cast<const char*>(str->data()), str->size());
-	}
 
 	//auto hton, so data inside will be changed, so copy or move
 	template<typename vec>
 		requires is_vector_v<vec>&& CNumberType<typename vec::value_type>
 	inline bool Client::Send(vec data) {
 		using elem_t = typename vec::value_type;
+		static_assert(!std::same_as<elem_t, bool>);
 		std::for_each(data.begin(), data.end(), [](elem_t& elem) { elem = host_to_network(elem); });
 		const int64_t bytes = static_cast<int64_t>(sizeof(elem_t) * data.size());
 		assert(std::in_range<msg_size>(bytes));
@@ -239,32 +352,6 @@ namespace tcp {
 	inline bool Client::Send(const T data) {
 		T net_data = host_to_network(data);
 		return Send(&net_data, sizeof(T));
-	}
-
-	template<CNumberType T>
-	inline [[nodiscard]] std::optional<T> Client::ReceiveParseTo() {
-		auto data = this->Receive();
-		if (!data || data->size() != sizeof(T)) {
-			NET_SOCKET_SET_ERROR("receive not match");
-			return {};
-		}
-		T buf;
-		memcpy(&buf, data->data(), sizeof(T));
-		return network_to_host(buf);
-	}
-
-	// auto ntoh
-	template<CNumberType T>
-	inline [[nodiscard]] std::optional<std::vector<T>> Client::ReceiveVec() {
-		auto bytes = Receive();
-		if (!bytes || bytes->size() % sizeof(T) != 0) {
-			NET_SOCKET_SET_ERROR("ReceiveVec but elem not match size");
-			return {};
-		}
-		std::vector<T> res(bytes->size() / sizeof(T));
-		memcpy(res.data(), bytes->data(), bytes->size());
-		std::for_each(res.begin(), res.end(), [](T& elem) { elem = network_to_host(elem); });
-		return res;
 	}
 
 }

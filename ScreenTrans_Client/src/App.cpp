@@ -70,6 +70,14 @@ void App::Receive() {
 
 	//ad_player.Start();
 	audioPlayer.start();
+	struct {
+		Signal signals;
+		net::socket_t id;
+		std::string other_name;
+		std::vector<float> frames;
+		int32_t pk_size;
+		std::vector<uint8_t> pk;
+	} rv;
 	while (!close_signal) {
 		{
 			std::lock_guard lock(mtx_close);
@@ -78,38 +86,44 @@ void App::Receive() {
 		}
 
 		// if closed, remove it and reset choice
-		auto signals = client.ReceiveParseTo<Signal>();
-		if (*signals & signal_closed) {
-			auto id = client.ReceiveParseTo<net::socket_t>();
+		//auto signals = client.ReceiveParseTo<Signal>();
+		client.ReceiveBy(rv.signals);
+		if (rv.signals & signal_closed) {
+			//auto id = client.ReceiveParseTo<net::socket_t>();
+			client.ReceiveBy(rv.id);
 			{
 				std::lock_guard lock(mtx_users);
-				auto count = std::erase_if(users, [&](auto& user) { return user.first == *id;});
+				auto count = std::erase_if(users, [&](auto& user) { return user.first == rv.id;});
 			}
 			chosen_user.store(client.Id(), std::memory_order_release);
 			continue;
 		}
 
-
-		auto id = client.ReceiveParseTo<net::socket_t>();
-		auto other_name = client.ReceiveString();
-		auto frames = client.ReceiveVec<float>();
+		//auto id = client.ReceiveParseTo<net::socket_t>();
+		//auto other_name = client.ReceiveString();
+		//auto frames = client.ReceiveVec<float>();
+		client.ReceiveBy(rv.id);
+		client.ReceiveBy(rv.other_name);
+		client.ReceiveBy(rv.frames);
 		{
 			std::lock_guard lock(mtx_users);
-			auto [itr, first] = users.try_emplace(*id);
-			itr->second.name = *other_name;
-			users[*id].audioBuf.push(frames->begin(), frames->end());
+			auto [itr, first] = users.try_emplace(rv.id);
+			itr->second.name = rv.other_name;
+			users[rv.id].audioBuf.push(rv.frames.begin(), rv.frames.end());
 		}
 
-		if (*signals & signal_choiceNotMatch) {
+		if (rv.signals & signal_choiceNotMatch) {
 			continue;
 		}
 
 
 		// each packet
-		auto pk_size = client.ReceiveParseTo<int32_t>();
-		for (int i = 0;i < *pk_size;++i) {
-			auto pk = client.Receive();
-			auto frames = decoder.DecodePacket(*pk);
+		//auto pk_size = client.ReceiveParseTo<int32_t>();
+		client.ReceiveBy(rv.pk_size);
+		for (int i = 0;i < rv.pk_size;++i) {
+			//auto pk = client.Receive();
+			client.ReceiveBy(rv.pk);
+			auto frames = decoder.DecodePacket(rv.pk);
 			if (!frames.empty()) {
 				std::lock_guard<std::mutex> lock(mtx_video_frames);
 				size_t current_size = total_video_frames.size();
@@ -244,16 +258,6 @@ App::Page App::Show() {
 	std::jthread recv_thread{ &App::Receive, this };
 
 	glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
-	glfwSetWindowUserPointer(window->m_get, this);
-	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
-		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
-		user->window->updatePos({ xpos, ypos });
-		});
-	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
-		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
-		glViewport(0, 0, width, height);
-		user->window->setViewport({ 0,0,width, height });
-		});
 
 	constexpr const char* vs = R"(
 #version 330 core
@@ -316,7 +320,7 @@ void main(){
 	bool show_settings = true;
 
 	auto last_time = std::chrono::steady_clock::now();
-	while (!window->shouldClose()) {
+	auto renderDealing = [&]() {
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>(1.0 / max_fps_video.load(std::memory_order_acquire))
 		);
@@ -327,10 +331,8 @@ void main(){
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed())
-				break;
+				return;
 		}
-
-		glfwPollEvents();
 
 #if USE_IMGUI
 		// Start the Dear ImGui frame
@@ -345,7 +347,7 @@ void main(){
 		vaoImg.bind();
 		gl::draw(eboImg, gl::DrawMode::TRIANGLES);
 
-		swapBuffers swap_buffers{window.get()}; // prevent continue swapbuffers
+		swapBuffers swap_buffers{ window.get() }; // prevent continue swapbuffers
 
 #if USE_IMGUI
 		ImGui::DockingSpace();
@@ -412,7 +414,7 @@ void main(){
 			std::lock_guard<std::mutex> lock(mtx_video_frames);
 			if (total_video_frames.empty()) {
 				//PL;
-				continue;
+				return;
 			}
 			else {
 				//PL;
@@ -427,11 +429,36 @@ void main(){
 		auto& data = frame.rgba;
 
 		if (data.size() != width * height * 4) {
-			continue;
+			return;
 		}
 
 		img.resize(width, height, 4);
 		img.resetData(data, 4);
+		};
+	any_usage = &renderDealing;
+	using renderFuncType = decltype(renderDealing);
+	glfwSetWindowUserPointer(window->m_get, this);
+	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
+		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
+		user->window->updatePos({ xpos, ypos });
+		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
+		renderDealing();
+		});
+	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
+		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
+		glViewport(0, 0, width, height);
+		user->window->setViewport({ 0,0,width, height });
+		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
+		renderDealing();
+		});
+	while (!window->shouldClose()) {
+		{
+			std::lock_guard lock(mtx_close);
+			if (client.Closed())
+				break;
+		}
+		glfwPollEvents();
+		renderDealing();
 	}
 	println("end ok");
 	close_signal.store(true, std::memory_order_release);
@@ -503,11 +530,11 @@ App::Page App::makeRoom() {
 		logger.passwd = p2.passwd;
 		client.Send(false);
 		client.Send(logger.passwd);
-		auto room_id0 = client.ReceiveParseTo<uint32_t>();
-		if (!room_id0) {
+		uint32_t room_id0{};
+		if (!client.ReceiveBy(room_id0)) {
 			return Page::serverStatusError;
 		}
-		logger.room_id = *room_id0;
+		logger.room_id = room_id0;
 		return Page::Show;
 	}
 }
@@ -533,13 +560,13 @@ App::Page App::enterRoom() {
 			client.Send(false);
 			client.Send(p3.room_id);
 			client.Send(p3.passwd);
-			auto room_id_ok = client.ReceiveParseTo<bool>();
-			if (!room_id_ok.has_value()){ return Page::serverStatusError; }
-			if (!room_id_ok.value())	{ room_id_not_exist = true; continue; }
+			bool room_id_ok{};
+			if (!client.ReceiveBy(room_id_ok))	{ return Page::serverStatusError; }
+			if (!room_id_ok)					{ room_id_not_exist = true; continue; }
 			else { room_id_not_exist = false; }
-			auto passwd_ok = client.ReceiveParseTo<bool>();
-			if (!passwd_ok.has_value())	{ return Page::serverStatusError; }
-			if (!passwd_ok.value())		{ passwd_wrong = true; continue; }
+			bool passwd_ok{};
+			if (!client.ReceiveBy(passwd_ok))	{ return Page::serverStatusError; }
+			if (!passwd_ok)						{ passwd_wrong = true; continue; }
 			else { passwd_wrong = false; }
 			break;
 		}

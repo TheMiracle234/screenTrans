@@ -165,11 +165,13 @@ public:
 	};
 	std::unordered_map < net::socket_t, User > users; // init with self
 	std::atomic<double> max_fps_data = 20;
-	std::atomic<double> max_fps_video = 20;
+	std::atomic<double> max_fps_video = 100;
 
 	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
 	net::tcp::Client client{ net::tcp::Ip::v4 };
+
+	void* any_usage{nullptr};
 public:
 	App();
 	~App();

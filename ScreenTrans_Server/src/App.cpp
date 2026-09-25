@@ -24,27 +24,26 @@ void App::register_handle(std::optional<net::tcp::Client> c) {
 			return;
 		}break;
 		case Page::choose: {
-			auto pre = c->ReceiveParseTo<bool>();
-			if (!pre.has_value()) { page = Page::interrupted; break; }
-			if (*pre) { page = Page::listen; break; }
-			auto choice = c->ReceiveParseTo<Choice>();
-			if (!choice) { page = Page::listen; break; }
+			bool pre{};
+			if (!c->ReceiveBy(pre))		{ page = Page::interrupted; break; }
+			if (pre)					{ page = Page::listen; break; }
+			Choice choice{};
+			if (!c->ReceiveBy(choice))	{ page = Page::listen; break; }
 			else {
-				switch (*choice) {
+				switch (choice) {
 				case choice_make_room: page = Page::make_room; break;
 				case choice_enter_room: page = Page::enter_room; break;
 				}
 			}
 		}break;
 		case Page::make_room: {
-			auto pre = c->ReceiveParseTo<bool>();
-			if (!pre.has_value()) { page = Page::interrupted; break; }
-			else if (*pre) { page = Page::choose; break; }
+			bool pre{};
+			if (!c->ReceiveBy(pre))		{ page = Page::interrupted; break; }
+			else if (pre)				{ page = Page::choose; break; }
+			uint32_t passwd{};
+			if (!c->ReceiveBy(passwd))	{ page = Page::interrupted; break; }
 
-			auto passwd = c->ReceiveParseTo<uint32_t>();
-			if (!passwd.has_value()) { page = Page::interrupted; break; }
-
-			auto room = std::make_unique<Room>(*passwd);
+			auto room = std::make_unique<Room>(passwd);
 			c->Send(room->id());
 			println("give id: " << room->id());
 			room->pushClient(std::move(*c));
@@ -61,17 +60,17 @@ void App::register_handle(std::optional<net::tcp::Client> c) {
 			// room id and passwd
 			bool enter_ok = true;
 			for (;;) {
-				auto pre = c->ReceiveParseTo<bool>();
-				if (!pre.has_value()) { page = Page::interrupted; break; }
-				else if (*pre) { page = Page::choose; break; }
-				auto id = c->ReceiveParseTo<uint32_t>();
-				auto passwd = c->ReceiveParseTo<uint32_t>();
-				if (!id) { page = Page::interrupted; break; }
+				bool pre{};
+				if (!c->ReceiveBy(pre)) { page = Page::interrupted; break; }
+				else if (pre)			{ page = Page::choose; break; }
+				uint32_t id{}, passwd{};
+				if (!c->ReceiveBy(id))		{ page = Page::interrupted; break; }
+				if (!c->ReceiveBy(passwd))	{ page = Page::interrupted; break; }
 
 				// once client gets room, we can't it destruct in the middle
 				std::lock_guard lock(mtx_rooms);
 				auto room = std::lower_bound(rooms.begin(), rooms.end(), 0, [id](std::unique_ptr<Room>& r, int) { return r->id() < id; });
-				if (room == rooms.end() || (*room)->id() != *id) {
+				if (room == rooms.end() || (*room)->id() != id) {
 					c->Send(false);
 					continue;
 				}
