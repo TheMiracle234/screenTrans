@@ -1,32 +1,32 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
-#ifndef TMSERVER_H
-#define TMSERVER_H
+#ifndef NET_TCP_SERVER_HPP
+#define NET_TCP_SERVER_HPP
 
-#include "Socket.h"
+#include "net/Socket.hpp"
 #include <optional>
 
-namespace TM {
+namespace net {
+namespace tcp {
 
 	class Client;
-    class TM_SOCKET_API Server
+    class Server
     {
 		static constexpr int MAX_CLIENTS = 0x7FFFFFFF;
-        bool Init(Socket::Protocol protocol, Socket::Ip ip, uint32_t port, std::string_view recvFrom = "0.0.0.0");
+        bool Init(Ip ip, uint32_t port, std::string_view recvFrom = "0.0.0.0");
 
 		Socket skt;
 
     public:
-		Server(Socket::Protocol protocol, Socket::Ip ip, uint32_t port, std::string_view recvFrom = "0.0.0.0");
+		Server(Ip ip, uint32_t port, std::string_view recvFrom = "0.0.0.0");
 		Server(Server& other) = delete;
 		Server(Server&& other) noexcept : skt(std::move(other.skt)) {}
 		bool Listen(int max_clients = MAX_CLIENTS);
-		SOCKET Id() { return skt.id; }
+		socket_t Id() { return skt.id; }
 		void Close() { skt.Close(); }
 		bool Closed() { return skt.Closed(); }
 		std::optional<Client> Accept();
     };
-
 }
-
+}
 #endif

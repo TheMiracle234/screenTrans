@@ -15,13 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\Client.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Server.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Socket.cpp">
+    <ClCompile Include="src\net\Socket.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="src\ScreenCapture.cpp">
@@ -96,6 +90,9 @@
     <ClCompile Include="src\audio\Capture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\net\tcp\Server.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ScreenCapture.h">
@@ -146,13 +143,10 @@
     <ClInclude Include="include\ST_API.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\Client.h">
+    <ClInclude Include="include\net\tcp\Server.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\Server.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Socket.h">
+    <ClInclude Include="include\net\Socket.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\gl\Buffer.h">
@@ -1400,5 +1394,13 @@
     <ClInclude Include="thirdparty\include\boost\boost\preprocessor\wstringize.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\net\tcp\Client.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="include\net\tcp\Client.inl">
+      <Filter>头文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

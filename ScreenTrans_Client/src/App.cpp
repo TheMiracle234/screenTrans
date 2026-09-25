@@ -17,7 +17,7 @@ extern "C" {
 
 #if USE_IMGUI
 namespace ImGui {
-	void DockingSpace() {
+	static void DockingSpace() {
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->WorkPos);
 		ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -70,6 +70,14 @@ void App::Receive() {
 
 	//ad_player.Start();
 	audioPlayer.start();
+	struct {
+		Signal signals;
+		net::socket_t id;
+		std::string other_name;
+		std::vector<float> frames;
+		int32_t pk_size;
+		std::vector<uint8_t> pk;
+	} rv;
 	while (!close_signal) {
 		{
 			std::lock_guard lock(mtx_close);
@@ -78,38 +86,44 @@ void App::Receive() {
 		}
 
 		// if closed, remove it and reset choice
-		auto signals = client.ReceiveParseTo<Signal>();
-		if (*signals & signal_closed) {
-			auto id = client.ReceiveParseTo<SOCKET>();
+		//auto signals = client.ReceiveParseTo<Signal>();
+		client.ReceiveBy(rv.signals);
+		if (rv.signals & signal_closed) {
+			//auto id = client.ReceiveParseTo<net::socket_t>();
+			client.ReceiveBy(rv.id);
 			{
 				std::lock_guard lock(mtx_users);
-				auto count = std::erase_if(users, [&](auto& user) { return user.first == *id;});
+				auto count = std::erase_if(users, [&](auto& user) { return user.first == rv.id;});
 			}
 			chosen_user.store(client.Id(), std::memory_order_release);
 			continue;
 		}
 
-
-		auto id = client.ReceiveParseTo<SOCKET>();
-		auto other_name = client.ReceiveString();
-		auto frames = client.ReceiveVec<float>();
+		//auto id = client.ReceiveParseTo<net::socket_t>();
+		//auto other_name = client.ReceiveString();
+		//auto frames = client.ReceiveVec<float>();
+		client.ReceiveBy(rv.id);
+		client.ReceiveBy(rv.other_name);
+		client.ReceiveBy(rv.frames);
 		{
 			std::lock_guard lock(mtx_users);
-			auto [itr, first] = users.try_emplace(*id);
-			itr->second.name = *other_name;
-			users[*id].audioBuf.push(frames->begin(), frames->end());
+			auto [itr, first] = users.try_emplace(rv.id);
+			itr->second.name = rv.other_name;
+			users[rv.id].audioBuf.push(rv.frames.begin(), rv.frames.end());
 		}
 
-		if (*signals & signal_choiceNotMatch) {
+		if (rv.signals & signal_choiceNotMatch) {
 			continue;
 		}
 
 
 		// each packet
-		auto pk_size = client.ReceiveParseTo<int32_t>();
-		for (int i = 0;i < *pk_size;++i) {
-			auto pk = client.Receive();
-			auto frames = decoder.DecodePacket(*pk);
+		//auto pk_size = client.ReceiveParseTo<int32_t>();
+		client.ReceiveBy(rv.pk_size);
+		for (int i = 0;i < rv.pk_size;++i) {
+			//auto pk = client.Receive();
+			client.ReceiveBy(rv.pk);
+			auto frames = decoder.DecodePacket(rv.pk);
 			if (!frames.empty()) {
 				std::lock_guard<std::mutex> lock(mtx_video_frames);
 				size_t current_size = total_video_frames.size();
@@ -190,10 +204,7 @@ void App::Send() {
 		client.Send(client.Id());
 		client.Send(logger.name);
 		client.Send(ad_cpt.Frames());//move
-		{
-			std::lock_guard lock(mtx_users);
-			client.Send(chosen_user.load(std::memory_order_acquire));
-		}
+		client.Send(chosen_user.load(std::memory_order_acquire));
 		client.Send(pk_size);
 		for (auto& pk : packets) {
 			client.Send(pk);
@@ -247,17 +258,6 @@ App::Page App::Show() {
 	std::jthread recv_thread{ &App::Receive, this };
 
 	glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
-	glfwSetWindowUserPointer(window->m_get, this);
-	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
-		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
-		user->window->updatePos({ xpos, ypos });
-		});
-	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
-		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
-		glViewport(0, 0, width, height);
-		user->window->updatePos({ width, height });
-		user->window->setViewport({ 0,0,width, height });
-		});
 
 	constexpr const char* vs = R"(
 #version 330 core
@@ -320,7 +320,7 @@ void main(){
 	bool show_settings = true;
 
 	auto last_time = std::chrono::steady_clock::now();
-	while (!window->shouldClose()) {
+	auto renderDealing = [&]() {
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>(1.0 / max_fps_video.load(std::memory_order_acquire))
 		);
@@ -331,10 +331,8 @@ void main(){
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed())
-				break;
+				return;
 		}
-
-		glfwPollEvents();
 
 #if USE_IMGUI
 		// Start the Dear ImGui frame
@@ -349,7 +347,7 @@ void main(){
 		vaoImg.bind();
 		gl::draw(eboImg, gl::DrawMode::TRIANGLES);
 
-		swapBuffers swap_buffers{window.get()}; // prevent continue swapbuffers
+		swapBuffers swap_buffers{ window.get() }; // prevent continue swapbuffers
 
 #if USE_IMGUI
 		ImGui::DockingSpace();
@@ -374,17 +372,19 @@ void main(){
 			max_fps_data.store(fd, std::memory_order_release);
 			max_fps_video.store(fv, std::memory_order_release);
 			ImGui::Text("target:");
-			if (ImGui::BeginCombo("##combo", users[chosen_user.load(std::memory_order_acquire)].name.c_str())) {
-				{
-					std::lock_guard lock(mtx_users);
+			{
+				std::lock_guard lock(mtx_users);
+				auto chosen = users.find(chosen_user.load(std::memory_order_acquire));
+				assert(chosen != users.end());
+				if (ImGui::BeginCombo("##combo", users[chosen->first].name.c_str())) {
 					for (const auto& user : users) {
 						if (ImGui::Selectable(user.second.name.c_str())) {
 							chosen_user.store(user.first, std::memory_order_release);
-							println("chosen socket: " << user.second.skt);
+							println("chosen socket: " << user.first);
 						}
 					}
+					ImGui::EndCombo();
 				}
-				ImGui::EndCombo();
 			}
 			ImGui::End();// settings
 		}
@@ -414,7 +414,7 @@ void main(){
 			std::lock_guard<std::mutex> lock(mtx_video_frames);
 			if (total_video_frames.empty()) {
 				//PL;
-				continue;
+				return;
 			}
 			else {
 				//PL;
@@ -429,11 +429,36 @@ void main(){
 		auto& data = frame.rgba;
 
 		if (data.size() != width * height * 4) {
-			continue;
+			return;
 		}
 
 		img.resize(width, height, 4);
 		img.resetData(data, 4);
+		};
+	any_usage = &renderDealing;
+	using renderFuncType = decltype(renderDealing);
+	glfwSetWindowUserPointer(window->m_get, this);
+	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
+		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
+		user->window->updatePos({ xpos, ypos });
+		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
+		renderDealing();
+		});
+	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
+		auto user = static_cast<App*>(glfwGetWindowUserPointer(window));
+		glViewport(0, 0, width, height);
+		user->window->setViewport({ 0,0,width, height });
+		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
+		renderDealing();
+		});
+	while (!window->shouldClose()) {
+		{
+			std::lock_guard lock(mtx_close);
+			if (client.Closed())
+				break;
+		}
+		glfwPollEvents();
+		renderDealing();
 	}
 	println("end ok");
 	close_signal.store(true, std::memory_order_release);
@@ -472,20 +497,18 @@ void App::pageRenderEnd() {
 }
 
 App::Page App::chooseMode() {
-	Choice choice{ 0 };
 	while(1) {
 		PageRenderGuard pageRenderGuard{ this, "choose mode", 20 };
 		if (ImGui::Button("<-")) { client.Send(true); return Page::connectToServer; }
-		ImGui::RadioButton("enter a room", &choice, choice_enter_room);
-		ImGui::RadioButton("make a room", &choice, choice_make_room);
-		if (choice == choice_invalid) { continue; }
-		if (ImGui::Button("->")) { 
+		if (ImGui::Button("enter a room")) {
 			client.Send(false);
-			client.Send(choice);
-			switch (choice) {
-			case choice_enter_room: return Page::enterRoom;break;
-			case choice_make_room: return Page::makeRoom;break;
-			}
+			client.Send(choice_enter_room);
+			return Page::enterRoom;
+		}
+		if (ImGui::Button("make a room")) {
+			client.Send(false);
+			client.Send(choice_make_room);
+			return Page::makeRoom;
 		}
 	}
 	return Page::never;
@@ -498,19 +521,20 @@ App::Page App::makeRoom() {
 		while (1) {
 			PageRenderGuard PageRenderGuard{ this, "passwd", 20 };
 			if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
-			ImGui::InputScalar("passwd", ImGuiDataType_U32, &logger.passwd);
-			if (logger.passwd == Room::invalid_passwd) {
+			ImGui::InputScalar("passwd", ImGuiDataType_U32, &p2.passwd);
+			if (p2.passwd == Room::invalid_passwd) {
 				ImGui::Text("invalid passwd: %d", (int)Room::invalid_passwd);
 			}
 			else if(ImGui::Button("->")) { break; }
 		}
+		logger.passwd = p2.passwd;
 		client.Send(false);
 		client.Send(logger.passwd);
-		auto room_id0 = client.ReceiveParseTo<uint32_t>();
-		if (!room_id0) {
+		uint32_t room_id0{};
+		if (!client.ReceiveBy(room_id0)) {
 			return Page::serverStatusError;
 		}
-		logger.room_id = *room_id0;
+		logger.room_id = room_id0;
 		return Page::Show;
 	}
 }
@@ -518,39 +542,37 @@ App::Page App::makeRoom() {
 App::Page App::enterRoom() {
 	logger.room_id = Room::invalid_id;
 	logger.passwd = Room::invalid_passwd;
-	uint32_t room_id{ Room::invalid_id };
-	uint32_t passwd{ Room::invalid_passwd };
 	bool room_id_not_exist{ false };
 	bool passwd_wrong{ false };
 	for (;;) {
 		PageRenderGuard pageRenderGuard(this, "enter room", 20);
 		if (ImGui::Button("<-")) { client.Send(true); return Page::chooseMode; }
-		ImGui::InputScalar("room_id", ImGuiDataType_U32, &room_id);
-		ImGui::InputScalar("passwd", ImGuiDataType_U32, &passwd);
+		ImGui::InputScalar("room_id", ImGuiDataType_U32, &p3.room_id);
+		ImGui::InputScalar("passwd", ImGuiDataType_U32, &p3.passwd);
 		ImGui::Text("both: 1~4294967295");
 		bool want_continue{ false };
-		if (room_id == Room::invalid_id)	{ ImGui::Text("room_id format invalid"); want_continue = true; } 
-		if (passwd == Room::invalid_passwd) { ImGui::Text("passwd format invalid"); want_continue = true; } 
+		if (p3.room_id == Room::invalid_id)		{ ImGui::Text("room_id format invalid"); want_continue = true; }
+		if (p3.passwd == Room::invalid_passwd)	{ ImGui::Text("passwd format invalid"); want_continue = true; }
 		if (want_continue) { continue; }
 		if (room_id_not_exist)	{ ImGui::Text("room id not exist"); } 
 		if (passwd_wrong)		{ ImGui::Text("passwd wrong"); }
 		if (ImGui::Button("->")) {
 			client.Send(false);
-			client.Send(room_id);
-			client.Send(passwd);
-			auto room_id_ok = client.ReceiveParseTo<bool>();
-			if (!room_id_ok.has_value()){ return Page::serverStatusError; }
-			if (!room_id_ok.value())	{ room_id_not_exist = true; continue; }
+			client.Send(p3.room_id);
+			client.Send(p3.passwd);
+			bool room_id_ok{};
+			if (!client.ReceiveBy(room_id_ok))	{ return Page::serverStatusError; }
+			if (!room_id_ok)					{ room_id_not_exist = true; continue; }
 			else { room_id_not_exist = false; }
-			auto passwd_ok = client.ReceiveParseTo<bool>();
-			if (!passwd_ok.has_value())	{ return Page::serverStatusError; }
-			if (!passwd_ok.value())		{ passwd_wrong = true; continue; }
+			bool passwd_ok{};
+			if (!client.ReceiveBy(passwd_ok))	{ return Page::serverStatusError; }
+			if (!passwd_ok)						{ passwd_wrong = true; continue; }
 			else { passwd_wrong = false; }
 			break;
 		}
 	}
-	logger.passwd = passwd;
-	logger.room_id = room_id;
+	logger.passwd = p3.passwd;
+	logger.room_id = p3.room_id;
 	return Page::Show;
 }
 
@@ -562,29 +584,26 @@ App::Page App::serverStatusError() {
 }
 
 App::Page App::connectToServer() {
-	client = Client{ TM::Socket::TCP, Socket::IPV4 };
 	logger.name = {};
-	constexpr size_t buf_size = 256;
-	char ipv4[buf_size]{};
-	constexpr uint32_t invalid_port{ 0 };
-	uint32_t port{ invalid_port };
-	char name[buf_size]{};
 
 	bool first{ true };
 	loop {
+		client = net::tcp::Client{ net::tcp::Ip::v4 };
 		loop {
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
-			ImGui::InputText("target_ipv4", ipv4, buf_size);
-			ImGui::InputScalar("target_port", ImGuiDataType_U32, &port);
-			ImGui::InputText("your_name", name, buf_size, ImGuiInputTextFlags_CharsNoBlank);
+			ImGui::InputText("target_ipv4", p1.ipv4, p1.buf_size);
+			ImGui::InputScalar("target_port", ImGuiDataType_U32, &p1.port);
+			ImGui::InputText("your_name", p1.name, p1.buf_size, ImGuiInputTextFlags_CharsNoBlank);
 			bool ok{ true };
-			if (!first)					{ ImGui::Text("connect failed"); ok = false; } 
-			if (strlen(name) == 0)		{ ImGui::Text("name should not be blank"); ok = false; }
-			if (port == invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", port); ok = false; }
+			if (!first)						{ ImGui::Text("connect failed"); } 
+			if (strlen(p1.name) == 0)		{ ImGui::Text("name should not be blank"); ok = false; }
+			if (p1.port == p1.invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", p1.port); ok = false; }
 			if (ok && ImGui::Button("connect")) { break; }
 		}
-		if (client.ConnectTo(ipv4, port)) {
+		if (client.ConnectTo(p1.ipv4, p1.port)) {
+			println(p1.ipv4);
+			println(p1.port);
 			println("connected to server successfully");
 			break;
 		}
@@ -593,8 +612,9 @@ App::Page App::connectToServer() {
 			first = false;
 		}
 	}
-	logger.name = name;
-	println(logger.name);
+	logger.name = p1.name;
+	println("socket: " << client.Id());
+	println("name: " << logger.name);
 	return Page::chooseMode;
 }
 
@@ -638,8 +658,14 @@ App::App() {
 	style->ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
 	style->FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
 
+	ImFontConfig fontConfig{};
+
+	fontConfig.OversampleH = 2;
+	fontConfig.OversampleV = 2;
+
 	//io.Fonts->Clear();
-	io->Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, nullptr, io->Fonts->GetGlyphRangesChineseFull());
+	io->Fonts->AddFontFromFileTTF("font/MapleMonoNL-CN-Regular.ttf", 15.0f, &fontConfig, io->Fonts->GetGlyphRangesChineseFull());
+	//io->Fonts->AddFontFromFileTTF("C:/Windows/Fonts/msyh.ttc", 15.0f, &fontConfig, io->Fonts->GetGlyphRangesChineseFull());
 	//io.Fonts->Build();
 	//io.Fonts->AddFontFromFileTTF("font/msyh.ttc", 15.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
 

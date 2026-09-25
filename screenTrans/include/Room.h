@@ -4,7 +4,7 @@
 
 #include <vector>
 #include <thread>
-#include <Client.h>
+#include <net/tcp/Client.hpp>
 #include <optional>
 #include <memory>
 #include <mutex>
@@ -12,7 +12,12 @@
 #include <unordered_map>
 #include <semaphore>
 
-using TM::Client;
+namespace net {
+namespace tcp{
+	class Client;
+}
+}
+using net::tcp::Client;
 
 class Room {
 public:
@@ -34,12 +39,13 @@ private:
 	std::jthread m_delete_thread_thread;
 	std::shared_mutex m_mtx_client_sockets;
 	std::shared_mutex m_mutex_choices;
-	std::vector<std::unique_ptr<Client>> m_client_sockets;
+	struct ClientMtx { Client client; std::mutex mtx; };
+	std::vector<std::unique_ptr<ClientMtx>> m_client_sockets;
 	std::vector<std::jthread> m_clients_threads;
 	std::mutex m_mtx_id;
 	std::mutex m_mtx_used;
 	std::mutex m_mtx_need_check;
-	std::unordered_map<SOCKET, SOCKET> m_choices_of; // <socket of client(in server), client socket choice>
+	std::unordered_map<net::socket_t, net::socket_t> m_choices_of; // <socket of client(in server), client socket choice>
 public:
 	Room(const std::optional<uint32_t>& passwd = {});
 	~Room();
@@ -51,10 +57,10 @@ public:
 	bool empty() { std::lock_guard lock(m_mtx_client_sockets); return m_client_sockets.size() == 0; }
 	uint32_t id() { std::lock_guard lock(m_mtx_id); return m_id; }
 	std::optional<uint32_t>& passwd() { return m_passwd; }
-	std::unique_ptr<Client>& client(size_t i) { return m_client_sockets[i]; }
+	//std::unique_ptr<Client>& client(size_t i) { return m_client_sockets[i]; }
 	std::jthread& thread(size_t i) { return m_clients_threads[i]; }
 	void pushClient(Client c);
 private:
-	static void sendMsg(Client* client, Room* room);
+	static void sendMsg(ClientMtx* cm, Room* room);
 	static void deleteThread(Room* room);
 };

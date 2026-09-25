@@ -22,8 +22,6 @@ namespace audio {
         config.dataCallback = dataCallBack;
         config.pUserData = user;
 
-        //config.noFixedSizedCallback = MA_TRUE;
-
         ma_result result = ma_device_init(nullptr, &config, &m_device);
         assert(result == MA_SUCCESS);
 
