@@ -1,20 +1,32 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
-#include "Socket.h"
+#include "net/Socket.hpp"
 #include <iostream>
+#include <cassert>
 
-namespace TM {
-	Socket::Socket() {
-		std::lock_guard lock(mtx_obj_life);
-		if (count == 0) {
-			Socket::StartUp();
-		}
-		++count;
+namespace net {
+	Socket::Socket() { 
+		assert(started == true);
+	}
+
+	Socket::Socket(Socket&& other) noexcept {
+		if (&other == this) { return; }
+		Close();
+		id = other.id;
+		other.id = invalid_socket;
+	}
+
+	Socket& Socket::operator=(Socket&& other) noexcept {
+		if (&other == this) { return *this; }
+		Close();
+		id = other.id;
+		other.id = invalid_socket;
+		return *this;
 	}
 
 	void Socket::SetError(std::string_view str, std::string_view file, int line) {
 		last_err = std::string(file) + "\nline " + std::to_string(line) + ": " + std::string(str) + "\n";
-#	ifdef SOCK_DEBUG
+#	ifndef NDEBUG
 		std::cerr << last_err << std::endl;
 #	endif	
 	}
@@ -24,9 +36,12 @@ namespace TM {
 		WSADATA wsaData;
 		int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
 		if (result != 0) {
-			TM_SOCKET_SET_ERROR("WSAStartup failed with error code: " + std::to_string(result));
+			NET_SOCKET_SET_ERROR("WSAStartup failed with error code: " + std::to_string(result));
 			return false;
 		}
+#	ifndef NDEBUG
+		started = true;
+#	endif
 		return true;
 	}
 
@@ -85,21 +100,16 @@ namespace TM {
 	}
 
 	Socket::~Socket() {
-		std::lock_guard lock(mtx_obj_life);
-		if (id != INVALID_SOCKET) {
+		if (id != invalid_socket) {
 			closesocket(id);
-		}
-		--count;
-		if (count == 0) {
-			CleanUp();
 		}
 	}
 
 	void Socket::Close()
 	{
-		if(id != INVALID_SOCKET){ 
+		if(id != invalid_socket){
 			closesocket(id); 
-			id = INVALID_SOCKET; 
+			id = invalid_socket;
 		}
 	}
 

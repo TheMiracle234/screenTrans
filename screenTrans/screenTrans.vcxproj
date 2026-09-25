@@ -145,6 +145,7 @@
     <ClCompile Include="src\audio\User.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
+    <ClCompile Include="src\net\tcp\Server.cpp" />
     <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="thirdparty\include\miniaudio\miniaudio.cpp" />
     <ClCompile Include="src\ScreenCapture.cpp" />
@@ -164,16 +165,13 @@
     <ClCompile Include="thirdparty\include\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_tables.cpp" />
     <ClCompile Include="thirdparty\include\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="src\Client.cpp" />
-    <ClCompile Include="src\Server.cpp" />
-    <ClCompile Include="src\Socket.cpp" />
+    <ClCompile Include="src\net\Socket.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\audio\Capture.hpp" />
     <ClInclude Include="include\AudioPlay.h" />
     <ClInclude Include="include\audio\Player.hpp" />
     <ClInclude Include="include\audio\User.hpp" />
-    <ClInclude Include="include\Client.h" />
     <ClInclude Include="include\gl\Buffer.h" />
     <ClInclude Include="include\gl\debug.h" />
     <ClInclude Include="include\gl\IndexBuffer.h" />
@@ -187,10 +185,11 @@
     <ClInclude Include="include\gl\Window.h" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
+    <ClInclude Include="include\net\tcp\Client.hpp" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />
-    <ClInclude Include="include\Server.h" />
-    <ClInclude Include="include\Socket.h" />
+    <ClInclude Include="include\net\tcp\Server.hpp" />
+    <ClInclude Include="include\net\Socket.hpp" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />
     <ClInclude Include="thirdparty\include\boost\boost\preprocessor\arithmetic.hpp" />
@@ -603,6 +602,9 @@
     <ClInclude Include="thirdparty\include\imgui\imstb_textedit.h" />
     <ClInclude Include="thirdparty\include\imgui\imstb_truetype.h" />
     <ClInclude Include="thirdparty\include\miniaudio\miniaudio.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="include\net\tcp\Client.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

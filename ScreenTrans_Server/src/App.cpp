@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
 #include <App.hpp>
 
-void App::register_handle(std::optional<Client> c) {
+void App::register_handle(std::optional<net::tcp::Client> c) {
 	if (!c) {
 		println("server accept error");
 		return;
@@ -137,7 +137,7 @@ void App::run() {
 	uint32_t port;
 	print("input port to be set: ");
 	std::cin >> port;
-	Server server(TM::Socket::TCP, TM::Socket::IPV4, port);
+	net::tcp::Server server( net::tcp::Ip::v4, port);
 	server.Listen();
 	println("waiting for the first client...");
 

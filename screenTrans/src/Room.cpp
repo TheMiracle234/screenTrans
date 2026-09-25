@@ -27,31 +27,32 @@ if choiceNotMatch
 	send: signals, id, name, audio_frames
 
 */
-void Room::sendMsg(Client* client, Room* room) {
-	SOCKET save_id = INVALID_SOCKET;
+void Room::sendMsg(ClientMtx* clientMtx, Room* room) {
+	net::socket_t save_id = net::invalid_socket;
+	Client* client = &clientMtx->client;
 
 	using Flag0 = uint8_t;
 	enum : Flag0 {
-		flag_closedSignalSent = (Flag0)1 << 0,
-		flag_clientChoiceRecorded = (Flag0)1 << 1,
+		flag_clientChoiceRecorded = (Flag0)1 << 0,
 	};
 	Flag0 flags = 0;
-	SOCKET last_chosen_socket = INVALID_SOCKET;
+	std::atomic<bool> closedSignalSent{false};
+	net::socket_t last_chosen_socket = net::invalid_socket;
 	for (;;) {
-		if (client->Closed() && flags & flag_closedSignalSent)
+		if (client->Closed() && closedSignalSent.load(std::memory_order_acquire))
 		{
 			break;
 		}
 
-		auto id = client->ReceiveParseTo<SOCKET>();
+		auto id = client->ReceiveParseTo<net::socket_t>();
 		auto name = client->ReceiveString();
 		auto audio_frames = client->ReceiveVec<float>();
-		auto choose_socket = client->ReceiveParseTo<SOCKET>();
+		auto choose_socket = client->ReceiveParseTo<net::socket_t>();
 		auto pk_size = client->ReceiveParseTo<int32_t>();
 
 		std::vector<std::vector<uint8_t>> packets;
 		if (!client->Closed()) {
-			if (save_id == INVALID_SOCKET) { // since there always be at least one loop, this "=" will always be done
+			if (save_id == net::invalid_socket) { // since there always be at least one loop, this "=" will always be done
 				save_id = *id;
 				println("connected to client socket: " << save_id);
 			}
@@ -73,13 +74,14 @@ void Room::sendMsg(Client* client, Room* room) {
 		}
 		{
 			std::shared_lock lock(room->m_mtx_client_sockets);
-			std::for_each(std::execution::par, room->m_client_sockets.begin(), room->m_client_sockets.end(), [&](std::unique_ptr<Client>& c) {
-				std::lock_guard lock(c->mutex());
+			std::for_each(std::execution::par, room->m_client_sockets.begin(), room->m_client_sockets.end(), [&](std::unique_ptr<ClientMtx>& cm) {
+				std::lock_guard lock(cm->mtx);
+				Client* c = &cm->client;
 
 				if (client->Closed()) {
 					c->Send(signal_closed);
 					c->Send(save_id);
-					flags |= flag_closedSignalSent;
+					closedSignalSent.store(true, std::memory_order_release);
 					return;
 				}
 
@@ -121,7 +123,7 @@ void Room::deleteThread(Room* room) {
 		{
 			std::lock_guard lock_cs(room->m_mtx_client_sockets);
 			for (size_t i = 0; i < room->m_client_sockets.size(); ) {
-				if (room->m_client_sockets[i]->Closed()) {
+				if (room->m_client_sockets[i]->client.Closed()) {
 					room->m_clients_threads.erase(room->m_clients_threads.begin() + i);
 					room->m_client_sockets.erase(room->m_client_sockets.begin() + i);
 				}
@@ -176,7 +178,7 @@ void Room::pushClient(Client c) {
 	}
 	{
 		std::lock_guard lock(m_mtx_client_sockets);
-		m_client_sockets.emplace_back(std::make_unique<Client>(std::move(c)));
+		m_client_sockets.emplace_back(std::make_unique<ClientMtx>(std::move(c)));
 		m_clients_threads.emplace_back(std::jthread(sendMsg, m_client_sockets.back().get(), this));
 	}
 }

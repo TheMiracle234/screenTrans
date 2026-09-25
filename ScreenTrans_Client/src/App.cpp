@@ -80,7 +80,7 @@ void App::Receive() {
 		// if closed, remove it and reset choice
 		auto signals = client.ReceiveParseTo<Signal>();
 		if (*signals & signal_closed) {
-			auto id = client.ReceiveParseTo<SOCKET>();
+			auto id = client.ReceiveParseTo<net::socket_t>();
 			{
 				std::lock_guard lock(mtx_users);
 				auto count = std::erase_if(users, [&](auto& user) { return user.first == *id;});
@@ -90,7 +90,7 @@ void App::Receive() {
 		}
 
 
-		auto id = client.ReceiveParseTo<SOCKET>();
+		auto id = client.ReceiveParseTo<net::socket_t>();
 		auto other_name = client.ReceiveString();
 		auto frames = client.ReceiveVec<float>();
 		{
@@ -524,8 +524,8 @@ App::Page App::enterRoom() {
 		ImGui::InputScalar("passwd", ImGuiDataType_U32, &p3.passwd);
 		ImGui::Text("both: 1~4294967295");
 		bool want_continue{ false };
-		if (p3.room_id == Room::invalid_id)	{ ImGui::Text("room_id format invalid"); want_continue = true; }
-		if (p3.passwd == Room::invalid_passwd) { ImGui::Text("passwd format invalid"); want_continue = true; }
+		if (p3.room_id == Room::invalid_id)		{ ImGui::Text("room_id format invalid"); want_continue = true; }
+		if (p3.passwd == Room::invalid_passwd)	{ ImGui::Text("passwd format invalid"); want_continue = true; }
 		if (want_continue) { continue; }
 		if (room_id_not_exist)	{ ImGui::Text("room id not exist"); } 
 		if (passwd_wrong)		{ ImGui::Text("passwd wrong"); }
@@ -561,7 +561,7 @@ App::Page App::connectToServer() {
 
 	bool first{ true };
 	loop {
-		client = Client{ TM::Socket::TCP, Socket::IPV4 };
+		client = net::tcp::Client{ net::tcp::Ip::v4 };
 		loop {
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));

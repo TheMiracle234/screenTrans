@@ -16,8 +16,8 @@
 #	endif
 #endif
 
-#include <Client.h>
-#include <Socket.h>
+#include <net/tcp/Client.hpp>
+#include <net/Socket.hpp>
 #include <H264Encoder.h>
 #include <H264Decoder.h>
 #include <audio/Capture.hpp>
@@ -34,6 +34,7 @@
 #include <memory>
 #include <algorithm>
 #include <unordered_map>
+#include <queue>
 #include <chrono>
 
 #include <boost/lockfree/spsc_queue.hpp>
@@ -59,7 +60,6 @@
 #undef min
 #undef max
 
-using TM::Client, TM::Socket;
 using ST::H264Encoder, ST::H264Decoder, ST::ScreenCapture;
 
 inline constexpr int SLEEP_TIME = 0;
@@ -135,6 +135,7 @@ private:
 	Page Show();
 
 public:
+	net::InitGuard initGuard{};
 	gl::GlfwInitGuard glfwInitGuard;
 	std::unique_ptr<gl::Window> window{ makeWindow()};
 
@@ -154,22 +155,21 @@ public:
 	std::mutex mtx_video_frames;
 	std::mutex mtx_close;
 	std::mutex mtx_users;
-	//std::mutex mtx_choiceChange;
 
 	std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
-	std::atomic<SOCKET> chosen_user; // init with self
+	std::atomic<net::socket_t> chosen_user; // init with self
 	struct User{
 		std::string name;
 		boost::lockfree::spsc_queue<float> audioBuf{ audio::sampleRate * audio::channels * audio::bufSec };
 	};
-	std::unordered_map < SOCKET, User > users; // init with self
+	std::unordered_map < net::socket_t, User > users; // init with self
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 20;
 
 	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
-	TM::Client client{ Socket::TCP, Socket::IPV4 };
+	net::tcp::Client client{ net::tcp::Ip::v4 };
 public:
 	App();
 	~App();
