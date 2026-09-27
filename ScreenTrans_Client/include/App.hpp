@@ -111,8 +111,8 @@ private:
 	struct P1 {
 		static inline constexpr size_t buf_size = 256;
 		char ipv4[buf_size]{};
-		static inline constexpr uint32_t invalid_port{ 0 };
-		uint32_t port{ invalid_port };
+		static inline constexpr uint16_t invalid_port{ 0 };
+		uint16_t port{ invalid_port };
 		char name[buf_size]{};
 	}p1;
 	Page connectToServer();

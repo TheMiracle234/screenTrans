@@ -5,92 +5,100 @@
 #include <cassert>
 
 namespace net {
-	Socket::Socket() { 
+	Socket::Socket(socket_t id) :
+		m_id(id)
+	{ 
 		assert(started == true);
 	}
 
 	Socket::Socket(Socket&& other) noexcept {
 		if (&other == this) { return; }
 		Close();
-		id = other.id;
-		other.id = invalid_socket;
+		m_id = other.m_id;
+		other.m_id = invalid_socket;
 	}
 
 	Socket& Socket::operator=(Socket&& other) noexcept {
 		if (&other == this) { return *this; }
 		Close();
-		id = other.id;
-		other.id = invalid_socket;
+		m_id = other.m_id;
+		other.m_id = invalid_socket;
 		return *this;
 	}
 
 	void Socket::SetError(std::string_view str, std::string_view file, int line) {
 		last_err = std::string(file) + "\nline " + std::to_string(line) + ": " + std::string(str) + "\n";
-#	ifndef NDEBUG
-		std::cerr << last_err << std::endl;
-#	endif	
+#		ifndef NDEBUG
+			std::cerr << last_err << std::endl;
+#		endif	
 	}
 
 	bool Socket::StartUp()
 	{
-		WSADATA wsaData;
-		int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-		if (result != 0) {
-			NET_SOCKET_SET_ERROR("WSAStartup failed with error code: " + std::to_string(result));
-			return false;
-		}
-#	ifndef NDEBUG
-		started = true;
-#	endif
+#		ifdef _WIN32
+			WSADATA wsaData;
+			int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+			if (result != 0) {
+				NET_SOCKET_SET_ERROR("WSAStartup failed with error code: " + std::to_string(result));
+				return false;
+			}
+#		endif
+#		ifndef NDEBUG
+			started = true;
+#		endif
 		return true;
 	}
 
 	void Socket::CleanUp()
 	{
+#ifdef _WIN32
 		WSACleanup();
+#endif
 	}
 
-	bool Socket::CheckClosedByErrorCode(int code) {
+	bool Socket::CheckClosedByErrorCode(int code)
+	{
 		switch (code) {
-			// 对端重置连接（已不可用）
-		case WSAECONNRESET:
-			// 套接字未连接
-		case WSAENOTCONN:
-			// 连接超时
-		case WSAETIMEDOUT:
-			// 本地中止连接
-		case WSAECONNABORTED:
-			// 套接字已关闭
-		case WSAESHUTDOWN:
-			// 网络子系统失效
-		case WSAENETDOWN:
-			// 网络连接被重置
-		case WSAENETRESET:
-
-			// 连接被拒绝（端口未监听等）
-		case WSAECONNREFUSED:
-			// 网络不可达
-		case WSAENETUNREACH:
-			// 主机不可达
-		case WSAEHOSTUNREACH:
-			// 缓冲区空间不足（系统资源不足，连接已无法维持）
-		case WSAENOBUFS:
-			// 操作不支持（协议状态异常，连接不可用）
-		case WSAEOPNOTSUPP:
-
-			// 对端正常关闭（可选，表示连接已断开）
-		case WSAEDISCON:
-
-			// not socket（套接字已关闭或无效）
-		case WSAENOTSOCK:
-
-			// 注意：WSAEINTR (中断) 一般不需要关闭套接字，这里不加入
+#ifdef _WIN32
+			// ---- Windows ----
+		case WSAECONNRESET:      // 对端重置连接
+		case WSAENOTCONN:        // 套接字未连接
+		case WSAETIMEDOUT:       // 连接超时
+		case WSAECONNABORTED:    // 本地中止
+		case WSAESHUTDOWN:       // 套接字已关闭
+		case WSAENETDOWN:        // 网络子系统失效
+		case WSAENETRESET:       // 网络连接被重置
+		case WSAECONNREFUSED:    // 连接被拒绝
+		case WSAENETUNREACH:     // 网络不可达
+		case WSAEHOSTUNREACH:    // 主机不可达
+		case WSAENOBUFS:         // 缓冲区不足
+		case WSAEOPNOTSUPP:      // 操作不支持
+		case WSAEDISCON:         // 对端正常关闭 (消息协议)
+		case WSAENOTSOCK:        // 无效套接字
+		case WSAEHOSTDOWN:       // 目标主机已关闭
 			return true;
+#else
+			// ---- Linux / POSIX ----
+		case ECONNRESET:         // 对端重置连接
+		case ENOTCONN:           // 套接字未连接
+		case ETIMEDOUT:          // 连接超时
+		case ECONNABORTED:       // 本地中止
+		case ESHUTDOWN:          // 套接字已关闭
+		case ENETDOWN:           // 网络子系统失效
+		case ENETRESET:          // 网络连接被重置
+		case ECONNREFUSED:       // 连接被拒绝
+		case ENETUNREACH:        // 网络不可达
+		case EHOSTUNREACH:       // 主机不可达
+		case ENOBUFS:            // 缓冲区不足
+		case EOPNOTSUPP:         // 操作不支持
+		case ENOTSOCK:           // 无效套接字
+		case EHOSTDOWN:          // 目标主机已关闭
+			return true;
+#endif
 		default:
 			return false;
 		}
 	}
-
 	bool Socket::Check(bool ok)
 	{
 		if (!ok) {
@@ -100,17 +108,19 @@ namespace net {
 	}
 
 	Socket::~Socket() {
-		if (id != invalid_socket) {
-			closesocket(id);
-		}
+		Close();
 	}
 
 	void Socket::Close()
 	{
-		if(id != invalid_socket){
-			closesocket(id); 
-			id = invalid_socket;
+		if(m_id != invalid_socket){
+#ifdef _WIN32
+			::closesocket(m_id);
+#else
+			::close(m_id);
+#endif		
 		}
+		m_id = invalid_socket;
 	}
 
 }

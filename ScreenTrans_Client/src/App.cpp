@@ -593,7 +593,7 @@ App::Page App::connectToServer() {
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
 			ImGui::Text("your socket: %zu", static_cast<size_t>(client.Id()));
 			ImGui::InputText("target_ipv4", p1.ipv4, p1.buf_size);
-			ImGui::InputScalar("target_port", ImGuiDataType_U32, &p1.port);
+			ImGui::InputScalar("target_port", ImGuiDataType_U16, &p1.port);
 			ImGui::InputText("your_name", p1.name, p1.buf_size, ImGuiInputTextFlags_CharsNoBlank);
 			bool ok{ true };
 			if (!first)						{ ImGui::Text("connect failed"); } 
@@ -601,7 +601,7 @@ App::Page App::connectToServer() {
 			if (p1.port == p1.invalid_port)	{ ImGui::Text("%s: port invalid - should be a unsigned number not 0", p1.port); ok = false; }
 			if (ok && ImGui::Button("connect")) { break; }
 		}
-		if (client.ConnectTo(p1.ipv4, p1.port)) {
+		if (client.ConnectTo(net::tcp::Ip::v4, p1.ipv4, p1.port)) {
 			println(p1.ipv4);
 			println(p1.port);
 			println("connected to server successfully");

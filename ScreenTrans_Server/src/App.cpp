@@ -133,7 +133,7 @@ App::App() {
 }
 
 void App::run() {
-	uint32_t port;
+	uint16_t port;
 	print("input port to be set: ");
 	std::cin >> port;
 	net::tcp::Server server( net::tcp::Ip::v4, port);

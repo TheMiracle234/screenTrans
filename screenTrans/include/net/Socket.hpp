@@ -7,7 +7,16 @@
 #	define _WINSOCK_DEPRECATED_NO_WARNINGS
 #	include <WinSock2.h>
 #	pragma comment(lib, "ws2_32.lib")
-#endif //_WIN32
+#else
+#	include <sys/types.h>
+#	include <sys/socket.h>
+#	include <netinet/in.h>
+#	include <arpa/inet.h>
+#	include <netdb.h>
+#	include <unistd.h>
+#	include <cerrno>
+#	include <cstring>
+#endif
 
 #include <string>
 #include <cstdint>
@@ -17,13 +26,21 @@ namespace net {
 
 #ifdef _WIN32
 	using socket_t = SOCKET;
+	using socklen_t = int;
 	constexpr socket_t invalid_socket = INVALID_SOCKET;
+	inline constexpr int socket_error = SOCKET_ERROR;
+	inline int last_socket_error() { return WSAGetLastError(); }
+#	define WSAGetLastError static_assert(false);
+#	define SOCKADDR_IN static_assert(false);
+#	define SOCKADDR static_assert(false);
+#	undef INVALID_SOCKET
+#	undef SOCKET_ERROR
+#else
+	using socket_t = int;
+	inline constexpr socket_t invalid_socket = -1;
+	inline constexpr int socket_error = -1;
+	inline int last_socket_error() { return errno; }
 #endif // _WIN32
-
-#undef SOCKET
-#undef INVALID_SOCKET
-#define SOCKET static_assert(false, "use net::socket_t instead")
-#define INVALID_SOCKET static_assert(false, "use net::invalid_socket instead")
 
 	namespace tcp {
 		class Client;
@@ -49,7 +66,7 @@ namespace net {
 		static inline bool started = false;
 #	endif
 
-	protected:
+	private:
 #		define NET_SOCKET_SET_ERROR(str) Socket::SetError(str, __FILE__, __LINE__)
 		static void SetError(std::string_view str, std::string_view file, int line);
 		static bool StartUp();
@@ -58,21 +75,19 @@ namespace net {
 
 	public:
 		static bool Check(bool ok);
-
-	public:
-		socket_t id = invalid_socket;
-
 		static std::string& getLastError() { return last_err; }
-
-		Socket();
+		Socket(socket_t id);
 		Socket(const Socket& other) = delete;
 		Socket& operator=(const Socket& other) = delete;
 		Socket(Socket&& other) noexcept;
 		Socket& operator=(Socket&& other) noexcept;
 		~Socket();
 
+		socket_t id() { return m_id; }
 		void Close();
-		bool Closed() { return id == invalid_socket; }
+		bool Closed() { return m_id == invalid_socket; }
+	private:
+		socket_t m_id = invalid_socket;
 	};
 
 	struct InitGuard {

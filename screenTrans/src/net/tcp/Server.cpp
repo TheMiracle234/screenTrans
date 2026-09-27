@@ -3,43 +3,47 @@
 #include "net/tcp/Server.hpp"
 #include "net/tcp/Client.hpp"
 #include <iostream>
+#include <cassert>
 
 namespace net {
 namespace tcp {
 
-	bool Server::Init(Ip ip, uint32_t port, std::string_view recvFrom)
+	bool Server::Init(Ip ip, uint16_t port, const char* recvFrom)
 	{
-		skt.id = socket(static_cast<ip_t>(ip), SOCK_STREAM, IPPROTO_TCP);
-		if (skt.id == invalid_socket) {
-			NET_SOCKET_SET_ERROR("socket() failed with error code: " + std::to_string(WSAGetLastError()));
+		skt = Socket{ socket(static_cast<ip_t>(ip), SOCK_STREAM, IPPROTO_TCP) };
+		if (skt.id() == invalid_socket) {
+			NET_SOCKET_SET_ERROR("socket() failed with error code: " + std::to_string(last_socket_error()));
 			return false;
 		}
 
-		SOCKADDR_IN _port = { 0 };
+		sockaddr_in _port{};
 		_port.sin_family = static_cast<ip_t>(ip);
 		_port.sin_port = htons(port);
-		_port.sin_addr.s_addr = inet_addr(recvFrom.data());
+		_port.sin_addr.s_addr = inet_addr(recvFrom);
 		
-		int res = bind(skt.id, (SOCKADDR*)&_port, sizeof(_port));
+		int res = bind(skt.id(), reinterpret_cast<sockaddr*>(&_port), static_cast<socklen_t>(sizeof(_port)));
 		if (res != 0) {
-			NET_SOCKET_SET_ERROR("bind() failed with error code: " + std::to_string(WSAGetLastError()));
+			NET_SOCKET_SET_ERROR("bind() failed with error code: " + std::to_string(last_socket_error()));
 			return false;
 		}
 
 		return true;
 	}
 
-	Server::Server(Ip ip, uint32_t port, std::string_view recvFrom) {
+	Server::Server(Ip ip, uint16_t port, const char* recvFrom) :
+		skt{invalid_socket}
+	{
 		if (!Init(ip, port, recvFrom)) {
 			std::cerr << "Server init error" << std::endl;
-			system("pause");
+			(void)getchar();
 		}
 	}
 
-	bool Server::Listen(int max_clients)
+	bool Server::Listen(int backLog)
 	{
-		if (listen(skt.id, max_clients) == SOCKET_ERROR) {
-			NET_SOCKET_SET_ERROR("listen() failed with error code: " + std::to_string(WSAGetLastError()));
+		assert(backLog <= maxBackLog);
+		if (listen(skt.id(), backLog) == socket_error) {
+			NET_SOCKET_SET_ERROR("listen() failed with error code: " + std::to_string(last_socket_error()));
 			return false;
 		}
 		return true;
@@ -47,14 +51,21 @@ namespace tcp {
 
 	std::optional<Client> Server::Accept()
 	{
-		socket_t _id = accept(skt.id, nullptr, nullptr);
-		if (_id == invalid_socket) {
-			NET_SOCKET_SET_ERROR("accept() failed with error code: " + std::to_string(WSAGetLastError()));
+		socket_t id;
+		for (;;) {
+			id = accept(skt.id(), nullptr, nullptr);
+			if (id != invalid_socket) break;
+			int code = last_socket_error();
+#			ifdef _WIN32
+				if (code == WSAEINTR) continue;
+#			else
+				if (code == EINTR) continue;
+#			endif
+			NET_SOCKET_SET_ERROR("accept() failed with error code: "
+				+ std::to_string(code));
 			return std::nullopt;
 		}
-		Client out_client;
-		out_client.skt.id = _id;
-		return out_client;
+		return Client{ id };
 	}
 }
 }

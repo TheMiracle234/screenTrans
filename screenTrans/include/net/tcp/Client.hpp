@@ -54,31 +54,30 @@ namespace net {
         {
             friend class Server;
         private:
-            Ip ip_version;
             Socket skt;
 
             bool Init(Ip ip);
             msg_size send_all(socket_t s, const char* buf, msg_size len);
             msg_size recv_all(socket_t s, char* buf, msg_size len);
-            Client() = default;
+            Client(socket_t skt);
 
             std::optional<msg_size> recv_bytes();
             bool recv_msg(void* data, msg_size bytes);
 
         public:
-            Client(Ip ip);
+            Client(Ip ip_version);
             Client(const Client& other) = delete;
-            Client(Client&& other) noexcept : skt(std::move(other.skt)), ip_version(other.ip_version) {}
-            void operator=(Client&& other) noexcept { skt = std::move(other.skt); ip_version = other.ip_version; }
-            bool ConnectTo(const char* ip, uint32_t port);
-            socket_t Id() { return skt.id; }
+            Client(Client&& other) noexcept : skt(std::move(other.skt)) {}
+            void operator=(Client&& other) noexcept { skt = std::move(other.skt); }
+            bool ConnectTo(Ip ip_version, const char* ip, uint16_t port);
+            socket_t Id() { return skt.id(); }
 
             void Close() { skt.Close(); }
             bool Closed() { return skt.Closed(); }
 
             // when using this, there is no ntoh or hton
             // bases of all Send
-            bool Send(const void* data, int64_t bytes);
+            bool Send(const void* data, size_t bytes);
             bool Send(const std::vector<uint8_t>& data);
             bool Send(const std::vector<int8_t>& data);
 
@@ -99,18 +98,6 @@ namespace net {
 
             template<CIsVector Vec>
             bool ReceiveBy(Vec& out);
-
-            //[[nodiscard]] std::optional<std::vector<uint8_t>> Receive();
-
-            //template<CNumberType T>
-            //[[nodiscard]] std::optional<T> ReceiveParseTo();
-
-            //// auto ntoh
-            //template<CNumberType T>
-            //[[nodiscard]] std::optional<std::vector<T>> ReceiveVec();
-
-            //// make sure the msg sent to you is a string(end by \0)
-            //[[nodiscard]] std::optional<std::string> ReceiveString();
         };
     }
 };
