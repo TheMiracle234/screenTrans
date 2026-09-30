@@ -134,7 +134,7 @@ namespace tcp {
 		return true;
 	}
 
-	inline msg_size Client::send_all(socket_t s, const char* buf, msg_size len)
+	inline msg_size Client::send_all(socket_t s, const void* buf, msg_size len)
 	{
 #		ifdef _WIN32
 			using send_ret_t = int;       // send 返回值
@@ -151,7 +151,7 @@ namespace tcp {
 #			else
 				constexpr int send_flags = 0;
 #			endif
-			send_ret_t sent = send(s, buf + total, static_cast<send_len_t>(len - total), send_flags);
+			send_ret_t sent = send(s, static_cast<const char*>(buf) + total, static_cast<send_len_t>(len - total), send_flags);
 			if (sent <= 0) {
 				if (sent == 0) { return 0; }
 				int code = last_socket_error();
@@ -175,7 +175,7 @@ namespace tcp {
 		msg_size len = static_cast<msg_size>(bytes);
 		msg_size net_len = host_to_network(len);
 
-		ret = send_all(skt.id(), reinterpret_cast<char*>(&net_len), static_cast<msg_size>(sizeof(msg_size)));
+		ret = send_all(&net_len, static_cast<msg_size>(sizeof(msg_size)));
 		if (ret < 0) {
 			int code = last_socket_error();
 			NET_SOCKET_SET_ERROR("send() failed with error code: " + std::to_string(code));
@@ -189,7 +189,7 @@ namespace tcp {
 			return false;
 		}
 		//send msg
-		ret = send_all(skt.id(), reinterpret_cast<const char*>(data), len);
+		ret = send_all(data, len);
 		if (ret < 0) {
 			int code = last_socket_error();
 			NET_SOCKET_SET_ERROR("send() failed with error code: " + std::to_string(code));
@@ -223,7 +223,7 @@ namespace tcp {
 
 	inline std::optional<msg_size> Client::recv_bytes() {
 		msg_size net_len;
-		msg_size ret = recv_all(skt.id(), reinterpret_cast<char*>(&net_len), static_cast<msg_size>(sizeof(msg_size)));
+		msg_size ret = recv_all(&net_len, static_cast<msg_size>(sizeof(msg_size)));
 		if (ret < 0) {
 			int code = last_socket_error();
 			NET_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
@@ -241,7 +241,7 @@ namespace tcp {
 	}
 
 	inline bool Client::recv_msg(void* data, msg_size bytes) {
-		msg_size ret = recv_all(skt.id(), reinterpret_cast<char*>(data), bytes);
+		msg_size ret = recv_all(data, bytes);
 		if (ret < 0) {
 			int code = last_socket_error();
 			NET_SOCKET_SET_ERROR("recv() failed with error code: " + std::to_string(code));
@@ -306,7 +306,7 @@ namespace tcp {
 		return res;
 	}
 
-	inline msg_size Client::recv_all(socket_t s, char* buf, msg_size len) {
+	inline msg_size Client::recv_all(socket_t s, void* buf, msg_size len) {
 #		ifdef _WIN32
 			using recv_ret_t = int;
 			using recv_len_t = int;
@@ -316,7 +316,7 @@ namespace tcp {
 #		endif		
 		msg_size total = 0;
 		while (total < len) {
-			recv_ret_t bytes = recv(s, buf + total, static_cast<recv_len_t>(len - total), 0);
+			recv_ret_t bytes = recv(s, static_cast<char*>(buf) + total, static_cast<recv_len_t>(len - total), 0);
 			if (bytes <= 0) { return static_cast<msg_size>(bytes); }
 			total += static_cast<msg_size>(bytes);
 		}

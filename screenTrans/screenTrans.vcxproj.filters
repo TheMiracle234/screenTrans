@@ -21,9 +21,6 @@
     <ClCompile Include="src\ScreenCapture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\H264Encoder.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="src\H264Decoder.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -93,12 +90,12 @@
     <ClCompile Include="src\net\tcp\Server.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\H264Encoder.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ScreenCapture.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="include\H264Encoder.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\H264Decoder.h">
@@ -1395,6 +1392,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\net\tcp\Client.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\H264Encoder.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

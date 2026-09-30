@@ -88,6 +88,19 @@ All rights reserved. Licensed under the BSD 3-Clause License.
 
 - Copyright (c) 2017 Sean Barrett. Licensed under MIT License or Public Domain (Unlicense).
 
+### x264
+
+- This software uses the x264 library, which is licensed under the GNU General Public License v2.0 or later (GPL-2.0-or-later).
+- Copyright (C) 2003-2025 x264 project. All rights reserved.
+- Authors: Laurent Aimar, Loren Merritt, Fiona Glaser, et al.
+- The x264 library used in this project is obtained from ShiftMediaProject's x264 releases:
+  https://github.com/ShiftMediaProject/x264/releases
+- x264 version used in this project: 0.165.r3222 (provided by ShiftMediaProject).
+- Complete corresponding source code for x264 is available at:
+  https://code.videolan.org/videolan/x264
+- x264 project website: https://www.videolan.org/developers/x264.html
+- x264 is also available under a commercial proprietary license. For more information, contact licensing@x264.com.
+
 ### FFmpeg
 
 - This software uses code from the FFmpeg project, which is licensed under the GNU General Public License v3.0.

@@ -184,7 +184,9 @@ void Room::pushClient(Client c) {
 	}
 	{
 		std::lock_guard lock(m_mtx_client_sockets);
-		m_client_sockets.emplace_back(std::make_unique<ClientMtx>(std::move(c)));
-		m_clients_threads.emplace_back(std::jthread(sendMsg, m_client_sockets.back().get(), this));
+		std::unique_ptr<ClientMtx> client = std::make_unique<ClientMtx>(std::move(c));
+		auto ptr = client.get();
+		m_client_sockets.emplace_back(std::move(client));
+		m_clients_threads.emplace_back(std::jthread(sendMsg, ptr, this));
 	}
 }

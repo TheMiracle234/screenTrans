@@ -57,8 +57,6 @@ namespace net {
             Socket skt;
 
             bool Init(Ip ip);
-            msg_size send_all(socket_t s, const char* buf, msg_size len);
-            msg_size recv_all(socket_t s, char* buf, msg_size len);
             Client(socket_t skt);
 
             std::optional<msg_size> recv_bytes();
@@ -74,6 +72,12 @@ namespace net {
 
             void Close() { skt.Close(); }
             bool Closed() { return skt.Closed(); }
+
+            static msg_size send_all(socket_t s, const void* buf, msg_size len);
+            static msg_size recv_all(socket_t s, void* buf, msg_size len);
+
+            msg_size send_all(const void* buf, msg_size len) { return send_all(skt.id(), buf, len); }
+            msg_size recv_all(void* buf, msg_size len) { return recv_all(skt.id(), buf, len); }
 
             // when using this, there is no ntoh or hton
             // bases of all Send
