@@ -100,7 +100,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>GLEW_STATIC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>SCREEN_TRANS_PRJ;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
@@ -122,7 +122,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>GLEW_STATIC;NDEBUG</PreprocessorDefinitions>
+      <PreprocessorDefinitions>SCREEN_TRANS_PRJ;NDEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
@@ -140,6 +140,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="include\wins\wc_u8.hpp" />
     <ClCompile Include="src\audio\Capture.cpp" />
     <ClCompile Include="src\audio\Player.cpp" />
     <ClCompile Include="src\audio\User.cpp" />
@@ -186,6 +187,7 @@
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
     <ClInclude Include="include\net\tcp\Client.hpp" />
+    <ClInclude Include="include\plugin\Loader.hpp" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />
     <ClInclude Include="include\net\tcp\Server.hpp" />

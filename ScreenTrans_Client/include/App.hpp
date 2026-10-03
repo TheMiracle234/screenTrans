@@ -27,6 +27,9 @@
 #include <st_signals.h>
 #include <Room.h>
 
+#include <plugin/Loader.hpp>
+#include <plugin/Asr.hpp>
+
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -35,7 +38,9 @@
 #include <algorithm>
 #include <unordered_map>
 #include <queue>
+#include <vector>
 #include <chrono>
+using std::literals::chrono_literals::operator""ms;
 
 #include <boost/lockfree/spsc_queue.hpp>
 
@@ -46,6 +51,7 @@
 #include <gl/IndexBuffer.h>
 #include <gl/Render.h>
 #include <gl/Texture.h>
+#include <gl/util.h>
 
 #ifndef NDEBUG
 #	define print(x) std::cout<< x
@@ -69,9 +75,9 @@ inline constexpr double MAX_MAX_FPS = 150.0;
 inline constexpr double MIN_MAX_FPS = 5.0;
 
 namespace audio {
-	inline constexpr uint32_t sampleRate = 48000;
-	inline constexpr uint32_t channels = 2;
-	inline constexpr uint32_t periodSizeInFrames = 960;
+	inline constexpr uint32_t sampleRate = 16000;
+	inline constexpr uint32_t channels = 1;
+	inline constexpr uint32_t periodSizeInFrames = 1000;
 	static_assert(sampleRate% periodSizeInFrames == 0);
 	inline constexpr double periodSec = static_cast<double>(periodSizeInFrames) / sampleRate;
 	inline constexpr int mixPeriods = 5;
@@ -89,16 +95,17 @@ private:
 	/* recv: id, name, audio_frames, choose_socket, pk_size, pk[n] */
 	void Send();
 	void audioMix();
+	void asrRecv();
 private:
 	void pageRenderBegin(const char* title, int sleepTime);
 	void pageRenderEnd();
 	struct PageRenderGuard {
 		App* p;
-		PageRenderGuard(App* self, const char* title, int sleepTime) : p{self} { p->pageRenderBegin(title, sleepTime); }
+		PageRenderGuard(App* self, const char* title, int sleepTime) : p{ self } { p->pageRenderBegin(title, sleepTime); }
 		~PageRenderGuard() { p->pageRenderEnd(); }
 	};
 	friend struct PageRenderGuard;
-	enum class Page : uint8_t{
+	enum class Page : uint8_t {
 		connectToServer,
 		chooseMode,
 		makeRoom,
@@ -118,7 +125,7 @@ private:
 	Page connectToServer();
 
 	Page chooseMode();
-	
+
 	struct P2 {
 		uint32_t passwd{ Room::invalid_passwd };
 	}p2;
@@ -129,15 +136,15 @@ private:
 		uint32_t passwd{ Room::invalid_passwd };
 	}p3;
 	Page enterRoom();
-	
+
 	Page serverStatusError();
-	
+
 	Page Show();
 
 public:
 	net::InitGuard initGuard{};
 	gl::GlfwInitGuard glfwInitGuard;
-	std::unique_ptr<gl::Window> window{ makeWindow()};
+	std::unique_ptr<gl::Window> window{ makeWindow() };
 
 #if USE_IMGUI
 	float main_scale{};
@@ -151,19 +158,25 @@ public:
 		uint32_t passwd{ Room::invalid_passwd };
 	} logger;
 	Page page{ Page::connectToServer };
-	
+
 	std::mutex mtx_video_frames;
 	std::mutex mtx_close;
 	std::mutex mtx_users;
+	std::mutex mtx_audioFramesLong;
+	std::mutex mtx_speechWords;
+
 
 	std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
 	std::atomic<net::socket_t> chosen_user; // init with self
-	struct User{
+	struct User {
 		std::string name;
 		boost::lockfree::spsc_queue<float> audioBuf{ audio::sampleRate * audio::channels * audio::bufSec };
 	};
 	std::unordered_map < net::socket_t, User > users; // init with self
+	std::vector<float> audioFramesLong{};
+	std::string speechWords;
+
 	std::atomic<double> max_fps_data = 20;
 	std::atomic<double> max_fps_video = 100;
 
@@ -171,7 +184,16 @@ public:
 	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
 	net::tcp::Client client{ net::tcp::Ip::v4 };
 
-	void* any_usage{nullptr};
+	void* any_usage{nullptr}; // now only for renderFunc in draw function
+	
+	struct {
+		struct {
+			plugin::Loader loader{};
+			plugin::fn::AsrInit init{};
+			plugin::fn::AsrTranscribe transcribe{};
+			plugin::fn::AsrFree free{};
+		}asr;
+	} plug;
 public:
 	App();
 	~App();

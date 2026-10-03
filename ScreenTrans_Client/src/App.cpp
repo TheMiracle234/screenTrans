@@ -71,12 +71,12 @@ void App::Receive() {
 	//ad_player.Start();
 	audioPlayer.start();
 	struct {
-		Signal signals;
-		net::socket_t id;
-		std::string other_name;
-		std::vector<float> frames;
-		int32_t pk_size;
-		std::vector<uint8_t> pk;
+		Signal signals{};
+		net::socket_t id{};
+		std::string other_name{};
+		std::vector<float> audioFrames;
+		int32_t pk_size{};
+		std::vector<uint8_t> pk{};
 	} rv;
 	while (!close_signal) {
 		{
@@ -104,12 +104,12 @@ void App::Receive() {
 		//auto frames = client.ReceiveVec<float>();
 		client.ReceiveBy(rv.id);
 		client.ReceiveBy(rv.other_name);
-		client.ReceiveBy(rv.frames);
+		client.ReceiveBy(rv.audioFrames);
 		{
 			std::lock_guard lock(mtx_users);
 			auto [itr, first] = users.try_emplace(rv.id);
 			itr->second.name = rv.other_name;
-			users[rv.id].audioBuf.push(rv.frames.begin(), rv.frames.end());
+			users[rv.id].audioBuf.push(rv.audioFrames.begin(), rv.audioFrames.end());
 		}
 
 		if (rv.signals & signal_choiceNotMatch) {
@@ -213,36 +213,147 @@ void App::Send() {
 	}
 }
 
-void App::audioMix() {
-	const size_t samples = audio::mixPeriods * audio::periodSizeInFrames * audio::channels;
+void App::audioMix()
+{
+	const size_t samples =
+		audio::mixPeriods *
+		audio::periodSizeInFrames *
+		audio::channels;
+
 	std::vector<float> mixBuf(samples);
 	std::vector<float> getBuf(samples);
+
 	for (;;) {
+
 		{
 			std::lock_guard lock(mtx_close);
 			if (client.Closed()) { break; }
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		std::fill(mixBuf.begin(), mixBuf.end(), 0.0f);
-		size_t realSamples{ 0 };
+
+		std::this_thread::sleep_for(5ms);
+
+		std::fill( mixBuf.begin(), mixBuf.end(), 0.0f );
+
+		size_t realSamples = 0;
+
+		/*
+		 * ========================================================
+		 * 多用户混音
+		 * ========================================================
+		 */
 		{
 			std::lock_guard lock{ mtx_users };
+
 			for (auto& user : users) {
-				size_t thisSamples = user.second.audioBuf.pop(getBuf.data(), samples);
-				realSamples = std::max(realSamples, thisSamples);
-				for (size_t i = 0;i < thisSamples;++i) {
+
+				const size_t thisSamples =
+					user.second.audioBuf.pop( getBuf.data(), samples );
+
+				realSamples = std::max( realSamples, thisSamples );
+
+				for (size_t i = 0; i < thisSamples; ++i)
+				{
 					mixBuf[i] += getBuf[i];
 				}
 			}
 		}
-		auto max_it = std::ranges::max_element(mixBuf, [](float v1, float v2) { return std::abs(v1) < std::abs(v2); });
-		if (max_it != mixBuf.end()) {
-			float maxVal = std::abs(*max_it);
+
+		/*
+		 * 没有任何音频。
+		 */
+		if (realSamples == 0) { continue; }
+
+		/*
+		 * ========================================================
+		 * 防止混音溢出
+		 * ========================================================
+		 */
+		auto max_it =
+			std::ranges::max_element(
+				mixBuf.begin(),
+				mixBuf.begin() + realSamples,
+				[](float v1, float v2) {
+					return std::abs(v1) <
+						std::abs(v2);
+				}
+			);
+
+		if ( max_it != mixBuf.begin() + realSamples) {
+			const float maxVal =
+				std::abs(*max_it);
+
 			if (maxVal > 1.0f) {
-				std::ranges::for_each(mixBuf, [maxVal](float& v) { v /= maxVal; });
+
+				std::ranges::for_each(
+					mixBuf.begin(),
+					mixBuf.begin() + realSamples,
+					[maxVal](float& v) {
+						v /= maxVal;
+					}
+				);
 			}
 		}
-		audioUser.pushFrames(mixBuf.data(), realSamples);
+		{
+			std::lock_guard lock(mtx_audioFramesLong);
+			audioFramesLong.insert(audioFramesLong.end(), mixBuf.begin(), mixBuf.begin() + realSamples);
+		}
+		audioUser.pushFrames(
+			mixBuf.data(),
+			realSamples
+		);
+	}
+}
+
+void App::asrRecv()
+{
+	std::vector<float> audioBuf;
+	for (;;) {
+		std::this_thread::sleep_for(200ms);
+		{
+			std::lock_guard lock(mtx_close);
+			if (client.Closed()) { break; }
+		}
+
+		{
+			std::lock_guard lock(mtx_audioFramesLong);
+			audioBuf.resize(audioFramesLong.size());
+			std::copy(audioFramesLong.begin(), audioFramesLong.end(), audioBuf.begin());
+		}
+		if (audioBuf.empty()) { continue; }
+
+		int out_bytes = 0;
+
+		println(
+			"asr.transcribe begin, "
+			<< "samples = "
+			<< audioBuf.size()
+			<< ", seconds = "
+			<< static_cast<double>(
+				audioBuf.size()
+				) / 16000.0
+		);
+
+		const char* str = plug.asr.transcribe( audioBuf.data(), static_cast<int>( audioBuf.size() ), &out_bytes );
+		/*
+		 * ========================================================
+		 * 保存识别结果
+		 * ========================================================
+		 */
+		if ( str ) {
+			printf("got it\n");
+			{
+				std::lock_guard lock(mtx_audioFramesLong);
+				audioFramesLong.clear();
+			}
+			{
+				std::lock_guard lock(mtx_speechWords);
+				speechWords.assign(str, out_bytes);
+				printf("get: %s\n", speechWords.c_str());
+			}
+		} else if(speechWords.size() > audio::sampleRate * audio::channels * 20){
+			printf("not yet\n");
+			speechWords.clear();
+		}
 	}
 }
 
@@ -256,6 +367,7 @@ App::Page App::Show() {
 	std::jthread audioMix_thread{ &App::audioMix, this };
 	std::jthread send_thread{ &App::Send, this };
 	std::jthread recv_thread{ &App::Receive, this };
+	std::jthread asrRecv_thread{ &App::asrRecv, this };
 
 	glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
 
@@ -386,6 +498,18 @@ void main(){
 					ImGui::EndCombo();
 				}
 			}
+			//ImGui::Text("get: %s", speechWords.c_str());
+			ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true,
+				ImGuiWindowFlags_HorizontalScrollbar);
+
+			ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
+			{
+				std::lock_guard lock(mtx_speechWords);
+				ImGui::TextUnformatted(speechWords.c_str());
+			}
+			ImGui::PopTextWrapPos();
+
+			ImGui::EndChild();
 			ImGui::End();// settings
 		}
 		// ============ setting window ============ 
@@ -434,7 +558,7 @@ void main(){
 
 		img.resize(width, height, 4);
 		img.resetData(data, 4);
-		};
+	};
 	any_usage = &renderDealing;
 	using renderFuncType = decltype(renderDealing);
 	glfwSetWindowUserPointer(window->m_get, this);
@@ -673,9 +797,18 @@ App::App() {
 	ImGui_ImplGlfw_InitForOpenGL(window->m_get, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 #endif
+
+	assert(plug.asr.loader.load("plugin/plugin_ASR.dll"));
+	plug.asr.loader.get(plug.asr.init, plugin::name::asrInit);
+	plug.asr.loader.get(plug.asr.transcribe, plugin::name::asrTranscribe);
+	plug.asr.loader.get(plug.asr.free, plugin::name::asrFree);
+
+	assert(plug.asr.init("plugin/ggml-tiny.bin") == 0);
 }
 
 App::~App() {
+	plug.asr.free();
+
 #if USE_IMGUI
 	// Cleanup
 	ImGui::DestroyPlatformWindows();
@@ -686,6 +819,6 @@ App::~App() {
 }
 
 int main() {
-	App app{};
-	app.run();
+	std::unique_ptr<App> app = std::make_unique<App>();
+	app->run();
 }

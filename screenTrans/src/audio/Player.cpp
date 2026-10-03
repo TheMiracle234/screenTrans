@@ -43,7 +43,7 @@ namespace audio {
 
     
     void Player::reset(uint32_t sampleRate, uint32_t channels, uint32_t periodSizeInFrames, void* user, ma_device_data_proc dataCallBack) {
-        stop();
+        assert(!(m_flag & flag_isRunning));
         init(sampleRate, channels, periodSizeInFrames, user, dataCallBack);
     }
 
