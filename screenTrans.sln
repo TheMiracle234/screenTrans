@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.37111.16
+# Visual Studio Version 18
+VisualStudioVersion = 18.10.12224.181 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "screenTrans", "screenTrans\screenTrans.vcxproj", "{96E09171-886B-4052-9632-8D05A881D7AE}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ScreenTrans_Server", "ScreenTrans_Server\ScreenTrans_Server.vcxproj", "{18358DC1-BE1B-4BCE-B498-E962C0BE4A4D}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ScreenTrans_Client", "ScreenTrans_Client\ScreenTrans_Client.vcxproj", "{B09B5930-1AA4-44F1-8C1F-433EFE852C90}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "plugin_ASR", "ASR\ASR.vcxproj", "{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,6 +43,14 @@ Global
 		{B09B5930-1AA4-44F1-8C1F-433EFE852C90}.Release|x64.Build.0 = Release|x64
 		{B09B5930-1AA4-44F1-8C1F-433EFE852C90}.Release|x86.ActiveCfg = Release|Win32
 		{B09B5930-1AA4-44F1-8C1F-433EFE852C90}.Release|x86.Build.0 = Release|Win32
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Debug|x64.ActiveCfg = Debug|x64
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Debug|x64.Build.0 = Debug|x64
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Debug|x86.ActiveCfg = Debug|Win32
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Debug|x86.Build.0 = Debug|Win32
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Release|x64.ActiveCfg = Release|x64
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Release|x64.Build.0 = Release|x64
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Release|x86.ActiveCfg = Release|Win32
+		{407B75BB-82EA-4FA1-A15B-BC1ACE71AC6A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -93,6 +93,9 @@
     <ClCompile Include="src\H264Encoder.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="include\wins\wc_u8.hpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ScreenCapture.h">
@@ -1395,6 +1398,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\H264Encoder.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\plugin\Loader.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
