@@ -108,3 +108,11 @@ In accordance with GPLv3, the complete corresponding source code is available he
 https://github.com/FFmpeg/FFmpeg/commit/239f2c733d
 - FFmpeg official source code: https://ffmpeg.org/download.html
 - FFmpeg version used in this project: 8.1.1
+
+### whisper.cpp
+
+- Copyright (c) 2023-2026 The ggml authors.
+- Licensed under the MIT License.
+- This software uses code from the whisper.cpp project: https://github.com/ggerganov/whisper.cpp
+- whisper.cpp version used in this project: <commit: 6e4ab854f67f743900934a703d5603419384c961>
+- Complete corresponding source code is available at: https://github.com/ggerganov/whisper.cpp
