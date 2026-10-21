@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\CameraCapture.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
     <ClCompile Include="src\ClientApp.cpp" />
@@ -26,6 +27,7 @@
   <ItemGroup>
     <ClInclude Include="include\ClientApp.hpp" />
     <ClInclude Include="include\atomic_imgui.hpp" />
+    <ClInclude Include="include\CameraCapture.hpp" />
     <ClInclude Include="include\compile_time.hpp" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
@@ -121,8 +123,9 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>third/ccap;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>third/ccap;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib;$(SolutionDir)x64\Debug</AdditionalLibraryDirectories>
       <AdditionalDependencies>ccapd.lib;ffmpeg_x264.lib;freetype.lib;screenTrans.lib;opengl32.lib;glfw3.lib;glew32s.lib;dxguid.lib;d3d12.lib;dxgi.lib;D3DCompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

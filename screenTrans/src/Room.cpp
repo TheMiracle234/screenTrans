@@ -73,6 +73,11 @@ void Room::threadSendMsg(User* clientMtx) {
 		bool share_video{};
 		int32_t pk_size{};
 		std::vector<std::vector<uint8_t>> packets{};
+
+		bool share_camera{};
+		int32_t cam_pk_size{};
+		std::vector<std::vector<uint8_t>> cam_packets{};
+
 		void restore() {
 
 		}
@@ -112,6 +117,16 @@ void Room::threadSendMsg(User* clientMtx) {
 				rv.packets.resize(std::max(rv.packets.size(), (size_t)packet_count));
 				for (int32_t i = 0;i < packet_count;++i) {
 					client->ReceiveBy(rv.packets[i], { End::native, End::native });
+				}
+			}
+		}
+
+		client->ReceiveBy(rv.share_camera);
+		if (rv.share_camera) {
+			if (client->ReceiveBy(rv.cam_pk_size)) {
+				rv.cam_packets.resize(std::max(rv.cam_packets.size(), (size_t)rv.cam_pk_size));
+				for (int32_t i = 0; i < rv.cam_pk_size; i++) {
+					client->ReceiveBy(rv.cam_packets[i], { End::native, End::native });
 				}
 			}
 		}
@@ -200,6 +215,14 @@ void Room::threadSendMsg(User* clientMtx) {
 					c->Send(rv.pk_size);
 					for (int i = 0;i < packet_count;++i) {
 						c->Send(rv.packets[i]);
+					}
+				}
+
+				c->Send(rv.share_camera);
+				if (rv.share_camera) {
+					c->Send(rv.cam_pk_size);
+					for (int i = 0; i < rv.cam_pk_size; i++) {
+						c->Send(rv.cam_packets[i]);
 					}
 				}
 			});

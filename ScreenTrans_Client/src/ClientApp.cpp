@@ -157,6 +157,152 @@ void ClientApp::storeUiState() {
 	std::fwrite(&buf_ui, sizeof(buf_ui), 1, file);
 }
 
+void ClientApp::EnableCamera(bool enable) {
+	if (enable) {
+		if(!m_cameraCapture.IsOpened()) {
+			bool ret = m_cameraCapture.Open(0, 1280, 720);
+			if (ret) {
+				m_enableCamera = true;
+				std::cout << "摄像头开启成功" << std::endl;
+			}
+			else {
+				m_enableCamera = false;
+				std::cout << "摄像头开启失败" << std::endl;
+			}
+			ST::DecodedFrame dummy;
+			while (total_capture_frames.pop(dummy)) {}
+			while (send_camera_packets.pop(dummy.rgba)) {}
+			while (total_camera_frames.pop(dummy)) {}
+		}
+	}
+	else {
+		if(m_cameraCapture.IsOpened()) {
+			m_cameraCapture.Close();
+		}
+		m_enableCamera = false;
+	}
+}
+
+void ClientApp::CameraCaptureThread() {
+	DEFER{
+		[this]() {p_show.wait_threads.release(); }
+	};
+
+	std::vector<uint8_t> camBuf;
+	int camW = 0, camH = 0;
+
+	auto last_time = std::chrono::steady_clock::now();
+	const double fps = 30.0;
+
+	while (!p_show.ended() && !clientClosed()) {
+		auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<boost::float64_t>(1.0 / fps)
+		);
+		auto next_frame = last_time + target_interval;
+		std::this_thread::sleep_until(next_frame);
+		last_time = next_frame;
+
+		if (!get(ui.send.share_camera)) continue;
+
+		bool wantCamera = get(ui.send.share_camera);
+		
+		if (wantCamera && !m_cameraCapture.IsOpened()) {
+			EnableCamera(true);
+		}
+		
+		if (!wantCamera && m_cameraCapture.IsOpened()) {
+			EnableCamera(false);
+		}
+
+		if (!wantCamera) {
+			continue;
+		}
+
+		bool camHasFrame = m_cameraCapture.GetFrame(camBuf, camW, camH);
+
+		if (camHasFrame)
+		{
+			ST::DecodedFrame frame;
+			frame.width = camW;
+			frame.height = camH;
+			frame.rgba.swap(camBuf);
+			total_capture_frames.push(std::move(frame));
+		}
+	}
+
+}
+//发送转码
+void ClientApp::CameraCaptureEncode() {
+	DEFER{
+		[this]() {p_show.wait_threads.release(); }
+	};
+	ST::DecodedFrame frame;
+	while (!p_show.ended() && !clientClosed()) {
+		if (total_capture_frames.pop(frame)) break;
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	if (p_show.ended() || clientClosed()) return;
+
+	int w = frame.width & ~1;
+	int h = frame.height & ~1;
+
+	ST::H264Encoder encoder(w, h, get(ui.video.encode.fps), get(ui.video.encode.bitrate));
+	auto last_time = std::chrono::steady_clock::now();
+
+	while (!p_show.ended() && !clientClosed()){
+		if (!get(ui.send.share_camera)){
+			std::this_thread::sleep_for(20ms);
+			continue;
+		}
+
+		if (!total_capture_frames.pop(frame)){
+			continue;
+		}
+
+		auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<boost::float64_t>(1.0 / get(ui.send.fps))
+		);
+		auto next_frame = last_time + target_interval;
+		std::this_thread::sleep_until(next_frame);
+		last_time = next_frame;
+
+		auto pkts = encoder.EncodeFrame(frame.rgba);
+        
+
+        if (!pkts.empty()) {
+            //printf("[Encode] done, packets=%zu\n", pkts.size());
+            
+            for (auto& pkt : pkts) {
+				if (!send_camera_packets.push(std::move(pkt))) {
+					break;
+				}
+            }
+        }
+	}
+}
+
+void ClientApp::CameraDecode() {
+	DEFER{ [this]() {
+		p_show.wait_threads.release();
+	} };
+	H264Decoder decoder;
+	std::vector<std::vector<uint8_t>> pkts(recv_camera_packets_count);
+	while (!p_show.ended() && !clientClosed()) {
+		const size_t pkts_count = recv_camera_packets.pop(pkts.data(), recv_camera_packets_count);
+		if (pkts_count == 0) {
+			std::this_thread::sleep_for(std::chrono::microseconds(500));
+			continue;
+		}
+		for (size_t i = 0; i < pkts_count; ++i) {
+			auto frames = decoder.DecodePacket(pkts[i]);
+			for (auto& frame : frames) {
+				total_camera_frames.push(std::move(frame));
+			}
+		}
+	}
+}
+
+
 void ClientApp::loadUiState() {
 	std::FILE* const file = std::fopen("FlexMeet.ini", "rb");
 	DEFER([file]() { if (file) { std::fclose(file); }});
@@ -227,6 +373,11 @@ void ClientApp::Receive() {
 		bool share_video{};
 		int32_t pk_size{};
 		std::vector<uint8_t> pk{};
+
+		bool share_camera{};
+		int32_t cam_pk_size{};
+		std::vector<uint8_t> cam_pk{};
+
 		void restore() {
 		}
 	} rv;
@@ -330,6 +481,25 @@ void ClientApp::Receive() {
 				recv_screen_packets.push(std::move(rv.pk));
 			}
 		}
+
+		if (!client.ReceiveBy(rv.share_camera)) [[unlikely]] { break; }
+		{
+			std::lock_guard lock(mtx_users);
+			users[rv.id].share_camera = rv.share_camera;
+		}
+		if (rv.share_camera)
+		{
+			if (!client.ReceiveBy(rv.cam_pk_size)) [[unlikely]] { break; }
+			const net::EndSrcTar endSrcTar{
+				rv.signals & signal_littleEnd ? net::End::little : net::End::big,
+				net::End::native
+			};
+			for (int i = 0; i < rv.cam_pk_size; i++)
+			{
+				if (!client.ReceiveBy(rv.cam_pk, endSrcTar)) [[unlikely]] { break; }
+				recv_camera_packets.push(std::move(rv.cam_pk));
+			}
+		}
 	}
 }
 
@@ -416,6 +586,18 @@ void ClientApp::Send() {
 				auto& packet = packets[i];
 				//client.Send(packet.data(), packet.size());
 				client.Send(packet);
+			}
+		}
+
+		bool share_camera = get(ui.send.share_camera);
+		std::vector<std::vector<uint8_t>> cam_packets(send_camera_packets_count);
+		int32_t cam_pk_size = static_cast<int32_t>(send_camera_packets.pop(cam_packets.data(), send_camera_packets_count));
+
+		client.Send(share_camera);
+		if (share_camera){
+			client.Send(cam_pk_size);
+			for (int32_t i = 0; i < cam_pk_size; i++){
+				client.Send(cam_packets[i]);
 			}
 		}
 	}
@@ -769,7 +951,7 @@ ClientApp::Page ClientApp::Show() {
 		itr->second.name = logger.name;
 	}
 
-	constexpr size_t thread_count = 8;
+	constexpr size_t thread_count = 11;
 
 	DEFER{ [this, thread_count]() {
 		client.Close();
@@ -789,6 +971,9 @@ ClientApp::Page ClientApp::Show() {
 		std::jthread{ &ClientApp::asrRecv, this },
 		std::jthread{ &ClientApp::ScreenCaptureEncode, this },
 		std::jthread{ &ClientApp::ScreenDecode, this },
+		std::jthread{ &ClientApp::CameraCaptureThread, this },
+		std::jthread{ &ClientApp::CameraCaptureEncode, this },
+		std::jthread{ &ClientApp::CameraDecode, this },
 	};
 
 	static_assert(thread_count == sizeof(threads) / sizeof(std::jthread));
@@ -805,6 +990,13 @@ ClientApp::Page ClientApp::Show() {
 	};
 
 	gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
+
+	std::unique_ptr<gl::Texture2D> camTexture;
+	int cam_w = 0;
+	int cam_h = 0;
+	int cam_tex_w = 0;
+	int cam_tex_h = 0;
+	std::vector<uint8_t> camPixelBuffer;
 
 #if USE_IMGUI
 	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
@@ -986,6 +1178,8 @@ ClientApp::Page ClientApp::Show() {
 			}
 			// share_video
 			COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
+			// share_camera
+			COMP_ATOMIC(ImGui::Checkbox, "share_camera", ui.send.share_camera);
 			// share_audio
 			COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
 			// is_muted_keep
@@ -1162,11 +1356,90 @@ ClientApp::Page ClientApp::Show() {
 			ImGui::Image(img.id(), show_img_size);
 		}
 		ImGui::End();// main
+
+		user::id_t target_id = get(ui.room_user.chosen_user);
+		bool target_share_camera = false;
+
+		if (target_id == get(logger.id)) {
+			// 如果选中的是自己，看自己的开关
+			target_share_camera = get(ui.send.share_camera);
+			// 如果自己关了摄像头，关闭摄像头采集
+			if (!target_share_camera && m_cameraCapture.IsOpened()) {
+				EnableCamera(false);
+			}
+		}
+		else {
+			// 如果选中的是别人，从网络同步的状态里看对方开没开
+			std::lock_guard lock(mtx_users);
+			auto it = users.find(target_id);
+			if (it != users.end()) {
+				target_share_camera = it->second.share_camera;
+			}
+		}
+
+		ST::DecodedFrame cam_frame;
+		if (total_camera_frames.pop(cam_frame)
+			&& cam_frame.width > 0 && cam_frame.height > 0
+			&& cam_frame.rgba.size() == (size_t)cam_frame.width * cam_frame.height * 4)
+		{
+			cam_w = cam_frame.width;
+			cam_h = cam_frame.height;
+
+			if (!camTexture || cam_tex_w != cam_w || cam_tex_h != cam_h) {
+				cam_tex_w = cam_w;
+				cam_tex_h = cam_h;
+
+				camTexture.reset(new gl::Texture2D(
+					cam_w, cam_h, cam_frame.rgba,
+					gl::GpuTextureFmt::RGBA8, gl::TextureFmt::RGBA, 4
+				));
+			}
+			else {
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, camTexture->id());
+
+				camTexture->resetData(cam_frame.rgba, 4);
+			}
+		}
+
+		if (!target_share_camera && camTexture) {
+			camTexture.reset();
+			cam_tex_w = 0;
+			cam_tex_h = 0;
+		}
+
+		if (target_share_camera && camTexture && cam_tex_w > 0 && cam_tex_h > 0) {
+
+			ImGui::SetNextWindowSize(ImVec2(320, 240), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowPos(ImVec2(sc_width - 340, 20), ImGuiCond_FirstUseEver);
+			ImGui::Begin("camera");
+
+			const ImVec2 avail = ImGui::GetContentRegionAvail();
+			const float tex_w_y = static_cast<float>(cam_tex_w) / cam_tex_h;
+			const float win_w_y = avail.x / avail.y;
+			ImVec2 show_size;
+			if (tex_w_y > win_w_y) {
+				show_size.x = avail.x;
+				show_size.y = show_size.x / tex_w_y;
+			}
+			else {
+				show_size.y = avail.y;
+				show_size.x = show_size.y * tex_w_y;
+			}
+			ImGui::SetCursorPos(ImVec2(
+				(avail.x - show_size.x) * 0.5f,
+				(avail.y - show_size.y) * 0.5f));
+
+			ImGui::Image(camTexture->id(), show_size, ImVec2(0, 1), ImVec2(1, 0));
+
+
+			ImGui::End();
+		}
+
 		style->Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
 		// ============ main window ============ 
 
 		ImGui::End();//docking end
-
 		// Rendering
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1188,28 +1461,29 @@ ClientApp::Page ClientApp::Show() {
 		if (!total_video_frames_v1.empty()) {
 			total_video_frames_v1.pop(decodedFrame);
 		}
-		//if (total_video_frames.empty()) { return; }
-		//frame = std::move(total_video_frames.front());
-		//total_video_frames.pop();
 
 		int width = decodedFrame.width;
 		int height = decodedFrame.height;
 		auto& data = decodedFrame.rgba;
 
-		assert(data.size() == width * height * 4);
+		if (width > 0 && height > 0 && data.size() == (size_t)width * height * 4) {
+			bool share_video;
+			{
+				std::lock_guard lock(mtx_users);
+				share_video = users[get(ui.room_user.chosen_user)].share_video;
+			}
+			
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, img.id());
 
-		bool share_video;
-		{
-			std::lock_guard lock(mtx_users);
-			share_video = users[get(ui.room_user.chosen_user)].share_video;
-		}
-		if (share_video) {
-			img.resize(nullptr, width, height, 4);
-			img.resetData(data, 4);
-		}
-		else {
-			img.resize(nullptr, 1, 1, 4);
-			img.resetData({ 0,0,0,0 }, 4);
+			if (share_video) {
+				img.resize(nullptr, width, height, 4);
+				img.resetData(data, 4);
+			}
+			else {
+				img.resize(nullptr, 1, 1, 4);
+				img.resetData({ 0,0,0,0 }, 4);
+			}
 		}
 	};
 	any_usage = &renderDealing;
@@ -1533,6 +1807,8 @@ ClientApp::ClientApp() {
 }
 
 ClientApp::~ClientApp() {
+	m_cameraCapture.Close();
+
 	storeUiState();
 
 	plug.asr.free();
