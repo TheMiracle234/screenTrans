@@ -166,8 +166,11 @@ void ClientApp::EnableCamera(bool enable) {
 				std::cout << "摄像头开启成功" << std::endl;
 			}
 			else {
+				if (m_cameraCapture.IsOpened()) {
+					m_cameraCapture.Close();
+					std::cout << "摄像头已关闭" << std::endl;
+				}
 				m_enableCamera = false;
-				std::cout << "摄像头开启失败" << std::endl;
 			}
 			ST::DecodedFrame dummy;
 			while (total_capture_frames.pop(dummy)) {}
@@ -206,11 +209,10 @@ void ClientApp::CameraCaptureThread() {
 
 		bool wantCamera = get(ui.send.share_camera);
 		
-		if (wantCamera && !m_cameraCapture.IsOpened()) {
+		if (wantCamera && !m_enableCamera) {
 			EnableCamera(true);
 		}
-		
-		if (!wantCamera && m_cameraCapture.IsOpened()) {
+		else if (!wantCamera && m_enableCamera) {
 			EnableCamera(false);
 		}
 
@@ -991,12 +993,8 @@ ClientApp::Page ClientApp::Show() {
 
 	gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
 
-	std::unique_ptr<gl::Texture2D> camTexture;
-	int cam_w = 0;
-	int cam_h = 0;
-	int cam_tex_w = 0;
-	int cam_tex_h = 0;
-	std::vector<uint8_t> camPixelBuffer;
+	gl::Texture2D camTexture(1, 1, { 0,0,0,255 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::RGBA, 4);
+	bool has_cam_texture = false;
 
 #if USE_IMGUI
 	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
@@ -1361,15 +1359,12 @@ ClientApp::Page ClientApp::Show() {
 		bool target_share_camera = false;
 
 		if (target_id == get(logger.id)) {
-			// 如果选中的是自己，看自己的开关
 			target_share_camera = get(ui.send.share_camera);
-			// 如果自己关了摄像头，关闭摄像头采集
 			if (!target_share_camera && m_cameraCapture.IsOpened()) {
 				EnableCamera(false);
 			}
 		}
 		else {
-			// 如果选中的是别人，从网络同步的状态里看对方开没开
 			std::lock_guard lock(mtx_users);
 			auto it = users.find(target_id);
 			if (it != users.end()) {
@@ -1382,40 +1377,35 @@ ClientApp::Page ClientApp::Show() {
 			&& cam_frame.width > 0 && cam_frame.height > 0
 			&& cam_frame.rgba.size() == (size_t)cam_frame.width * cam_frame.height * 4)
 		{
-			cam_w = cam_frame.width;
-			cam_h = cam_frame.height;
+			int cam_w = cam_frame.width;
+			int cam_h = cam_frame.height;
 
-			if (!camTexture || cam_tex_w != cam_w || cam_tex_h != cam_h) {
-				cam_tex_w = cam_w;
-				cam_tex_h = cam_h;
-
-				camTexture.reset(new gl::Texture2D(
+			if (!has_cam_texture || camTexture.imgSize().x != cam_w || camTexture.imgSize().y != cam_h) {
+				camTexture = gl::Texture2D(
 					cam_w, cam_h, cam_frame.rgba,
 					gl::GpuTextureFmt::RGBA8, gl::TextureFmt::RGBA, 4
-				));
+				);
+				has_cam_texture = true;
 			}
 			else {
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, camTexture->id());
-
-				camTexture->resetData(cam_frame.rgba, 4);
+				camTexture.bindTo(1);
+				glActiveTexture(GL_TEXTURE1);
+				camTexture.resetData(cam_frame.rgba, 4);
 			}
 		}
 
-		if (!target_share_camera && camTexture) {
-			camTexture.reset();
-			cam_tex_w = 0;
-			cam_tex_h = 0;
+		if (!target_share_camera) {
+			has_cam_texture = false;
 		}
 
-		if (target_share_camera && camTexture && cam_tex_w > 0 && cam_tex_h > 0) {
+		if (target_share_camera && has_cam_texture) {
 
 			ImGui::SetNextWindowSize(ImVec2(320, 240), ImGuiCond_FirstUseEver);
 			ImGui::SetNextWindowPos(ImVec2(sc_width - 340, 20), ImGuiCond_FirstUseEver);
 			ImGui::Begin("camera");
 
 			const ImVec2 avail = ImGui::GetContentRegionAvail();
-			const float tex_w_y = static_cast<float>(cam_tex_w) / cam_tex_h;
+			const float tex_w_y = static_cast<float>(camTexture.imgSize().x) / camTexture.imgSize().y;
 			const float win_w_y = avail.x / avail.y;
 			ImVec2 show_size;
 			if (tex_w_y > win_w_y) {
@@ -1430,9 +1420,7 @@ ClientApp::Page ClientApp::Show() {
 				(avail.x - show_size.x) * 0.5f,
 				(avail.y - show_size.y) * 0.5f));
 
-			ImGui::Image(camTexture->id(), show_size, ImVec2(0, 1), ImVec2(1, 0));
-
-
+			ImGui::Image(camTexture.id(), show_size, ImVec2(0, 1), ImVec2(1, 0));
 			ImGui::End();
 		}
 

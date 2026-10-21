@@ -112,7 +112,7 @@ template <typename CB>
 class ClientApp {
 private:
 	CameraCapture m_cameraCapture;
-	bool m_enableCamera = false;
+	std::atomic<bool> m_enableCamera{ false };
 	void EnableCamera(bool enable);
 	void CameraCaptureThread();
 
