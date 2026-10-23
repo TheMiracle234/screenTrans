@@ -240,14 +240,14 @@ void Room::threadSendAudio(User* clientMtx, std::atomic<bool>& closedSignalSent)
 	struct {
 		user::id_t id{};
 		faudio_t faudio{};
-		std::vector<float> audio_frames{};
+		std::vector<uint8_t> audio_compressed{};
 	}rv{};
 	for (;;) {
 		if (client_audio->Closed()) [[unlikely]] { break; }
 		client_audio->ReceiveBy(rv.id);
 		client_audio->ReceiveBy(rv.faudio);
 		if (rv.faudio & faudio_share) {
-			client_audio->ReceiveBy(rv.audio_frames, { End::native, End::native });
+			client_audio->ReceiveBy(rv.audio_compressed, { End::native, End::native });
 		}
 		{
 			std::shared_lock lock(m_mtx_client_sockets);
@@ -259,7 +259,7 @@ void Room::threadSendAudio(User* clientMtx, std::atomic<bool>& closedSignalSent)
 				c->Send(rv.faudio);
 				if (rv.faudio & faudio_share) {
 					//c->Send(rv.audio_frames);
-					c->Send(rv.audio_frames.data(), sizeof(rv.audio_frames[0]) * rv.audio_frames.size());
+					c->Send(rv.audio_compressed.data(), sizeof(rv.audio_compressed[0]) * rv.audio_compressed.size());
 				}
 			});
 		}

@@ -3,36 +3,34 @@
 #include "ccap.h"
 #include <cstring>
 #include <iostream>
+#include <cassert>
 
 CameraCapture::CameraCapture() {
-	m_provider = new ccap::Provider();
-    //设置错误回调、日志等级
-    //ccap::setErrorCallback([](ccap::ErrorCode code, std::string_view desc) {
-    //    std::cerr << "[ccap摄像头错误] code=" << (int)code << " " << desc << std::endl;
-    //    });
-    //ccap::setLogLevel(ccap::LogLevel::Verbose);
+//#ifndef NDEBUG
+//	ccap::setErrorCallback([](ccap::ErrorCode code, std::string_view desc) {
+//        std::cerr << "[ccap摄像头错误] code=" << (int)code << " " << desc << std::endl;
+//        });
+//	ccap::setLogLevel(ccap::LogLevel::Verbose);
+//#endif
 }
 
 CameraCapture::~CameraCapture() {
 	Close();
-	delete m_provider;
 }
 
 bool CameraCapture::Open(int deviceId, int w, int h) {
-	if(!m_provider) return false;
 	if (m_opened) Close();
 
-	m_provider->set(ccap::PropertyName::PixelFormatInternal, ccap::PixelFormat::NV12);
-	m_provider->set(ccap::PropertyName::PixelFormatOutput, ccap::PixelFormat::BGRA32);
-	m_provider->set(ccap::PropertyName::Width, w);
-	m_provider->set(ccap::PropertyName::Height, h);
+	m_provider.set(ccap::PropertyName::PixelFormatOutput, ccap::PixelFormat::BGRA32);
+	if (w) { m_provider.set(ccap::PropertyName::Width, w); }
+	if (h) { m_provider.set(ccap::PropertyName::Height, h); }
 
-	bool opened = m_provider->open(deviceId, true);
-	if (!opened) {
+	bool opened = m_provider.open(deviceId, true);
+	if (!opened) [[unlikely]] {
 		std::cerr << "[摄像头] open失败，设备id:" << deviceId << std::endl;
 		return false;
 	}
-	if (!m_provider->isStarted()){
+	if (!m_provider.isStarted()) [[unlikely]] {
 		std::cerr << "[摄像头] 设备打开但是没有启动" << std::endl;
 		return false;
 	}
@@ -42,9 +40,9 @@ bool CameraCapture::Open(int deviceId, int w, int h) {
 }
 
 bool CameraCapture::GetFrame(std::vector<uint8_t>& out, int& outW, int& outH){
-	if (!m_opened || !m_provider) return false;
+	if (!m_opened) return false;
 
-	auto frame = m_provider->grab(3000);
+	auto frame = m_provider.grab(3000);
 	if (!frame) return false;
 
 	outW = static_cast<int>(frame->width);
@@ -52,10 +50,13 @@ bool CameraCapture::GetFrame(std::vector<uint8_t>& out, int& outW, int& outH){
 	size_t targetBytes = (size_t)outW * outH * 4;
 	out.resize(targetBytes);
 
+	assert(frame->sizeInBytes >= targetBytes);
+
 	if (frame->sizeInBytes >= targetBytes) {
 		memcpy(out.data(), frame->data[0], targetBytes);
 	}
-	else if (frame->sizeInBytes == (size_t)outW * outH * 3) {
+	else if (frame->sizeInBytes == (size_t)outW * outH * 3) [[unlikely]] {
+		assert(false);
 		const uint8_t* src = frame->data[0];
 		uint8_t* dst = out.data();
 		for (size_t i = 0; i < (size_t)outW * outH; ++i) {
@@ -67,10 +68,10 @@ bool CameraCapture::GetFrame(std::vector<uint8_t>& out, int& outW, int& outH){
 			dst += 4;
 		}
 	}
-	else {
-		std::cerr << "Unknown frame size: " << frame->sizeInBytes << std::endl;
+	else [[unlikely]] {
 		return false;
 	}
+
 	return true;
 }
 
@@ -79,8 +80,8 @@ bool CameraCapture::IsOpened() const{
 }
 
 void CameraCapture::Close() {
-	if (m_opened && m_provider) {
-		m_provider->close();
+	if (m_opened) {
+		m_provider.close();
 	}
 	m_opened = false;
 }

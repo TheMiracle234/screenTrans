@@ -167,10 +167,14 @@
     <ClCompile Include="src\net\Socket.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\asr_trace.hpp" />
+    <ClInclude Include="include\audio\Compress.hpp" />
     <ClInclude Include="include\audio\Capture.hpp" />
     <ClInclude Include="include\AudioPlay.h" />
     <ClInclude Include="include\audio\Player.hpp" />
     <ClInclude Include="include\audio\User.hpp" />
+    <ClInclude Include="include\captions.hpp" />
+    <ClInclude Include="include\env_value.hpp" />
     <ClInclude Include="include\gl\Buffer.h" />
     <ClInclude Include="include\gl\debug.h" />
     <ClInclude Include="include\gl\IndexBuffer.h" />

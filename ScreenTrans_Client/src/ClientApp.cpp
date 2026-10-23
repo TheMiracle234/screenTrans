@@ -128,45 +128,20 @@ std::unique_ptr<gl::Window> ClientApp::makeWindow() {
 	return res;
 }
 
-void ClientApp::storeUiState() {
-	std::FILE* const file = std::fopen("FlexMeet.ini", "wb");
-	DEFER([file]() { std::fclose(file); });
-	assert(file);
-	Ui buf_ui;
-
-	constexpr size_t BEGIN = __LINE__ + 1; // === BEGIN - 1 ===
-	memcpy(	buf_ui.p1.ipv4,							p1.ipv4, sizeof(p1.ipv4));//
-			buf_ui.p1.port							= net::host_to_network(p1.port);
-	memcpy(	buf_ui.p1.name,							p1.name, sizeof(p1.ipv4));
-			buf_ui.p2.passwd						= net::host_to_network(p2.passwd);//
-			buf_ui.p3.room_id						= net::host_to_network(p3.room_id);//
-			buf_ui.p3.passwd						= net::host_to_network(p3.passwd);//
-			buf_ui.send.fps							= net::host_to_network(get(ui.send.fps));//
-			buf_ui.send.share_audio					= net::host_to_network(get(ui.send.share_audio));
-			buf_ui.send.share_video					= net::host_to_network(get(ui.send.share_video));
-			buf_ui.video.fps						= net::host_to_network(get(ui.video.fps));//
-			buf_ui.video.encode.fps					= net::host_to_network(get(ui.video.encode.fps));
-			buf_ui.video.encode.bitrate				= net::host_to_network(get(ui.video.encode.bitrate));
-			buf_ui.video.encode.width				= net::host_to_network(get(ui.video.encode.width));
-			buf_ui.video.encode.height				= net::host_to_network(get(ui.video.encode.height));
-			buf_ui.room_user.host.set_room_passwd	= net::host_to_network(get(ui.room_user.host.set_room_passwd));
-			buf_ui.room_user.host.mute_all_keep		= net::host_to_network(get(ui.room_user.host.mute_all_keep));
-	constexpr size_t END = __LINE__; // === END ===
-	static_assert(END - BEGIN == count_basic_members<Ui>());
-
-	std::fwrite(&buf_ui, sizeof(buf_ui), 1, file);
-}
-
 void ClientApp::EnableCamera(bool enable) {
 	if (enable) {
 		if(!m_cameraCapture.IsOpened()) {
-			bool ret = m_cameraCapture.Open(0, 1280, 720);
-			if (ret) {
-				m_enableCamera = true;
+			bool ret;
+			{
+				std::lock_guard lock(mtx_camera);
+				ret = m_cameraCapture.Open();
+			}
+			if (ret) [[likely]] {
+				set(ui.send.share_camera, true);
 				std::cout << "摄像头开启成功" << std::endl;
 			}
 			else {
-				m_enableCamera = false;
+				set(ui.send.share_camera, false);
 				std::cout << "摄像头开启失败" << std::endl;
 			}
 			ST::DecodedFrame dummy;
@@ -179,7 +154,7 @@ void ClientApp::EnableCamera(bool enable) {
 		if(m_cameraCapture.IsOpened()) {
 			m_cameraCapture.Close();
 		}
-		m_enableCamera = false;
+		set(ui.send.share_camera, false);
 	}
 }
 
@@ -302,6 +277,35 @@ void ClientApp::CameraDecode() {
 	}
 }
 
+void ClientApp::storeUiState() {
+	std::FILE* const file = std::fopen("FlexMeet.ini", "wb");
+	DEFER([file]() { std::fclose(file); });
+	assert(file);
+	Ui buf_ui;
+
+	constexpr size_t BEGIN = __LINE__ + 1; // === BEGIN - 1 ===
+	memcpy(buf_ui.p1.ipv4, p1.ipv4, sizeof(p1.ipv4));//
+	buf_ui.p1.port = net::host_to_network(p1.port);
+	memcpy(buf_ui.p1.name, p1.name, sizeof(p1.ipv4));
+	buf_ui.p2.passwd = net::host_to_network(p2.passwd);//
+	buf_ui.p3.room_id = net::host_to_network(p3.room_id);//
+	buf_ui.p3.passwd = net::host_to_network(p3.passwd);//
+	buf_ui.send.fps = net::host_to_network(get(ui.send.fps));//
+	buf_ui.send.share_audio = net::host_to_network(get(ui.send.share_audio));
+	buf_ui.send.share_video = net::host_to_network(get(ui.send.share_video));
+	buf_ui.send.share_camera = net::host_to_network(get(ui.send.share_camera));
+	buf_ui.video.fps = net::host_to_network(get(ui.video.fps));//
+	buf_ui.video.encode.fps = net::host_to_network(get(ui.video.encode.fps));
+	buf_ui.video.encode.bitrate = net::host_to_network(get(ui.video.encode.bitrate));
+	buf_ui.video.encode.width = net::host_to_network(get(ui.video.encode.width));
+	buf_ui.video.encode.height = net::host_to_network(get(ui.video.encode.height));
+	buf_ui.room_user.host.set_room_passwd = net::host_to_network(get(ui.room_user.host.set_room_passwd));
+	buf_ui.room_user.host.mute_all_keep = net::host_to_network(get(ui.room_user.host.mute_all_keep));
+	constexpr size_t END = __LINE__; // === END ===
+	static_assert(END - BEGIN == count_basic_members<Ui>());
+
+	std::fwrite(&buf_ui, sizeof(buf_ui), 1, file);
+}
 
 void ClientApp::loadUiState() {
 	std::FILE* const file = std::fopen("FlexMeet.ini", "rb");
@@ -323,6 +327,7 @@ void ClientApp::loadUiState() {
 	set(	ui.send.fps,						net::network_to_host(buf_ui.send.fps));//
 	set(	ui.send.share_audio,				net::network_to_host(buf_ui.send.share_audio));
 	set(	ui.send.share_video,				net::network_to_host(buf_ui.send.share_video));
+	set(	ui.send.share_camera,				net::network_to_host(buf_ui.send.share_camera));
 	set(	ui.video.fps,						net::network_to_host(buf_ui.video.fps));//
 	set(	ui.video.encode.fps,				net::network_to_host(buf_ui.video.encode.fps));
 	set(	ui.video.encode.bitrate,			net::network_to_host(buf_ui.video.encode.bitrate));
@@ -485,7 +490,7 @@ void ClientApp::Receive() {
 		if (!client.ReceiveBy(rv.share_camera)) [[unlikely]] { break; }
 		{
 			std::lock_guard lock(mtx_users);
-			users[rv.id].share_camera = rv.share_camera;
+			set(users[rv.id].share_camera, rv.share_camera);
 		}
 		if (rv.share_camera)
 		{
@@ -610,6 +615,7 @@ void ClientApp::audioSend(){
 	audio::Capture ad_cpt{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	ad_cpt.Start();
 	std::vector<float> buf_audio{};
+	std::vector<uint8_t> audio_compressed{};
 
 	auto last_time = std::chrono::steady_clock::now();
 	while (!p_show.ended() && !clientClosed()) {
@@ -637,7 +643,9 @@ void ClientApp::audioSend(){
 			}
 			else {
 				ad_cpt.giveFrames(buf_audio);
-				client_audio.Send(buf_audio.data(), sizeof(buf_audio[0]) * buf_audio.size());
+				audioCompressor.compress(audio_compressed, buf_audio);
+				//client_audio.Send(buf_audio.data(), sizeof(buf_audio[0]) * buf_audio.size());
+				client_audio.Send(audio_compressed.data(), sizeof(audio_compressed[0]) * audio_compressed.size());
 			}
 			//client_audio.Send(ui.room_user.is_muted_keep ? std::vector<float>{} : std::move(ad_cpt.giveFrames(buf_audio)));//move
 		}
@@ -650,16 +658,18 @@ void ClientApp::audioRecv(){
 		p_show.wait_threads.release();
 	}};
 	audioPlayer.start();
-
+	
 
 	struct {
 		user::id_t id{};
 		faudio_t faudio{};
 		std::vector<float> audioFrames{};
+		std::vector<uint8_t> audio_compressed{};
 		void restore() {
 		
 		}
 	} rv{};
+
 
 	while (!p_show.ended() && !clientClosed()) {
 		client_audio.ReceiveBy(rv.id);
@@ -671,7 +681,15 @@ void ClientApp::audioRecv(){
 		};
 
 		if (rv.faudio & faudio_share) {
-			client_audio.ReceiveBy(rv.audioFrames, endSrcTar);
+			bool ok = client_audio.ReceiveBy(rv.audio_compressed, endSrcTar);
+			if (ok) [[likely]] {
+				if (rv.audio_compressed.empty()) {
+					rv.audioFrames.resize(0);
+				}
+				else {
+					audioCompressor.decompress(rv.audioFrames, rv.audio_compressed);
+				}
+			}
 		}
 		else {
 			rv.audioFrames.resize(0);
@@ -735,7 +753,6 @@ void ClientApp::ScreenCaptureEncode() {
 		std::this_thread::sleep_until(next_frame);
 		last_time = next_frame;
 
-
 		bool share_audio = get(ui.send.share_audio);
 		bool share_video = get(ui.send.share_video);
 
@@ -767,8 +784,33 @@ void ClientApp::ScreenDecode() {
 	}
 }
 
-void ClientApp::CameraCapture() {
+static inline void audioDataStandard(std::vector<float>& buf, const size_t samples) {
+	auto max_it =
+		std::ranges::max_element(
+			buf.begin(),
+			buf.begin() + samples,
+			[](float v1, float v2) {
+				return std::abs(v1) <
+					std::abs(v2);
+			}
+		);
 
+
+	if (max_it != buf.begin() + samples) {
+		const float maxVal =
+			std::abs(*max_it);
+
+		if (maxVal > 1.0f) {
+
+			std::ranges::for_each(
+				buf.begin(),
+				buf.begin() + samples,
+				[maxVal](float& v) {
+					v /= maxVal;
+				}
+			);
+		}
+	}
 }
 
 void ClientApp::audioMix()
@@ -786,6 +828,7 @@ void ClientApp::audioMix()
 	//constexpr size_t samples = sleep_ms * audio::sampleRate / 1000 * audio::channels;
 
 	std::vector<float> mixBuf{};
+	std::vector<float> mixBufWithOutMe{};
 	std::vector<float> getBuf{};
 
 	util::Timer timer;
@@ -797,17 +840,19 @@ void ClientApp::audioMix()
 		const int sleep_ms = static_cast<int>(timer.milliseconds());
 		timer.restart();
 		const size_t samples = sleep_ms * audio::sampleRate / 1000 * audio::channels;
-		mixBuf.resize(samples, 0);
+		mixBuf.resize(samples);
+		mixBufWithOutMe.resize(samples);
 		getBuf.resize(samples, 0);
 
-		std::fill( mixBuf.begin(), mixBuf.end(), 0.0f );
+		std::fill(mixBufWithOutMe.begin(), mixBufWithOutMe.end(), 0.0f );
 
 		size_t realSamples = 0;
 
 		{
 			std::lock_guard lock{ mtx_users };
 			// 每轮 pop 前先修剪
-			const size_t target_watermark = audio::sampleRate * audio::channels / 5;   // 200ms
+			//const size_t target_watermark = audio::sampleRate * audio::channels / 5;   // 200ms
+			//std::pair < const user::id_t, User>* self_user{};
 			for (auto& user : users) {
 				const size_t thisSamples = cbPop(user.second.audioBuf, getBuf.data(), samples);
 				//const size_t thisSamples = user.second.audioBuf.pop( getBuf.data(), samples );
@@ -816,6 +861,7 @@ void ClientApp::audioMix()
 				if (user.first != logger.id) {
 					for (size_t i = 0; i < thisSamples; ++i) {
 						audio_playing |= std::abs(getBuf[i]) > User::audio_playing_least;
+						mixBufWithOutMe[i] += getBuf[i];
 						mixBuf[i] += getBuf[i];
 					}
 				}
@@ -823,6 +869,7 @@ void ClientApp::audioMix()
 				else {
 					for (size_t i = 0; i < thisSamples; ++i) {
 						audio_playing |= std::abs(getBuf[i]) > User::audio_playing_least;
+						mixBuf[i] += getBuf[i];
 					}
 				}
 				set(user.second.audio_playing, audio_playing);
@@ -831,31 +878,9 @@ void ClientApp::audioMix()
 
 		if (realSamples == 0) { continue; }
 
-		auto max_it =
-			std::ranges::max_element(
-				mixBuf.begin(),
-				mixBuf.begin() + realSamples,
-				[](float v1, float v2) {
-					return std::abs(v1) <
-						std::abs(v2);
-				}
-			);
+		audioDataStandard(mixBufWithOutMe, realSamples);
+		audioDataStandard(mixBuf, realSamples);
 
-		if ( max_it != mixBuf.begin() + realSamples) {
-			const float maxVal =
-				std::abs(*max_it);
-
-			if (maxVal > 1.0f) {
-
-				std::ranges::for_each(
-					mixBuf.begin(),
-					mixBuf.begin() + realSamples,
-					[maxVal](float& v) {
-						v /= maxVal;
-					}
-				);
-			}
-		}
 		{
 #if USE_ASR
 			std::lock_guard lock(mtx_audioFramesLong);
@@ -863,7 +888,7 @@ void ClientApp::audioMix()
 #endif
 		}
 		audioUser.pushFrames(
-			mixBuf.data(),
+			mixBufWithOutMe.data(),
 			realSamples
 		);
 	}
@@ -990,13 +1015,10 @@ ClientApp::Page ClientApp::Show() {
 	};
 
 	gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
-
-	std::unique_ptr<gl::Texture2D> camTexture;
-	int cam_w = 0;
-	int cam_h = 0;
-	int cam_tex_w = 0;
-	int cam_tex_h = 0;
+	gl::Texture2D camTexture(1, 1, {0,0,0,0}, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
 	std::vector<uint8_t> camPixelBuffer;
+	ST::DecodedFrame cam_frame;
+
 
 #if USE_IMGUI
 	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
@@ -1329,10 +1351,11 @@ ClientApp::Page ClientApp::Show() {
 
 		// ============ main window ============ 
 		style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
-		ImGui::Begin("main");
+		ImGui::Begin("screen", nullptr, ImGuiWindowFlags_NoScrollbar);
 		{
-			const ImVec2 winSize = ImGui::GetContentRegionAvail();
-			const ImVec2 content_origin = ImGui::GetCursorScreenPos();
+			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f :  ImGui::GetFrameHeight();
+			ImVec2 winSize = ImGui::GetWindowSize();
+			winSize.y -= titleBarH;
 			const auto imgSize = img.imgSize();
 			ImVec2 show_img_size;
 
@@ -1352,89 +1375,66 @@ ClientApp::Page ClientApp::Show() {
 				show_img_size.x = show_img_size.y * img_w_y;
 				offsetX = (winSize.x - show_img_size.x) / 2;
 			}
+			offsetY += titleBarH;
 			ImGui::SetCursorPos(ImVec2(offsetX, offsetY));
 			ImGui::Image(img.id(), show_img_size);
 		}
 		ImGui::End();// main
 
-		user::id_t target_id = get(ui.room_user.chosen_user);
-		bool target_share_camera = false;
-
-		if (target_id == get(logger.id)) {
-			// 如果选中的是自己，看自己的开关
-			target_share_camera = get(ui.send.share_camera);
-			// 如果自己关了摄像头，关闭摄像头采集
-			if (!target_share_camera && m_cameraCapture.IsOpened()) {
-				EnableCamera(false);
-			}
-		}
-		else {
-			// 如果选中的是别人，从网络同步的状态里看对方开没开
-			std::lock_guard lock(mtx_users);
-			auto it = users.find(target_id);
-			if (it != users.end()) {
-				target_share_camera = it->second.share_camera;
-			}
-		}
-
-		ST::DecodedFrame cam_frame;
-		if (total_camera_frames.pop(cam_frame)
-			&& cam_frame.width > 0 && cam_frame.height > 0
-			&& cam_frame.rgba.size() == (size_t)cam_frame.width * cam_frame.height * 4)
+//////////////////////////// camera
+		const user::id_t target_id = get(ui.room_user.chosen_user);
+		bool target_share_camera;
 		{
-			cam_w = cam_frame.width;
-			cam_h = cam_frame.height;
-
-			if (!camTexture || cam_tex_w != cam_w || cam_tex_h != cam_h) {
-				cam_tex_w = cam_w;
-				cam_tex_h = cam_h;
-
-				camTexture.reset(new gl::Texture2D(
-					cam_w, cam_h, cam_frame.rgba,
-					gl::GpuTextureFmt::RGBA8, gl::TextureFmt::RGBA, 4
-				));
-			}
-			else {
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, camTexture->id());
-
-				camTexture->resetData(cam_frame.rgba, 4);
-			}
+			std::lock_guard lock(mtx_users);
+			target_share_camera = users[target_id].share_camera;
 		}
 
-		if (!target_share_camera && camTexture) {
-			camTexture.reset();
-			cam_tex_w = 0;
-			cam_tex_h = 0;
+		if (!total_camera_frames.empty()) {
+			total_camera_frames.pop(cam_frame);
 		}
 
-		if (target_share_camera && camTexture && cam_tex_w > 0 && cam_tex_h > 0) {
+		int cam_w = cam_frame.width;
+		int cam_h = cam_frame.height;
+		auto& cam_data = cam_frame.rgba;
+		if (cam_w > 0 && cam_h > 0 && cam_data.size() == cam_w * cam_h * 4) {
+			camTexture.bindTo(0);
+			camTexture.resize(nullptr, cam_w, cam_h, 4);
+			camTexture.resetData(cam_frame.rgba, 4);
+		}
 
-			ImGui::SetNextWindowSize(ImVec2(320, 240), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowPos(ImVec2(sc_width - 340, 20), ImGuiCond_FirstUseEver);
-			ImGui::Begin("camera");
 
-			const ImVec2 avail = ImGui::GetContentRegionAvail();
-			const float tex_w_y = static_cast<float>(cam_tex_w) / cam_tex_h;
-			const float win_w_y = avail.x / avail.y;
-			ImVec2 show_size;
-			if (tex_w_y > win_w_y) {
-				show_size.x = avail.x;
-				show_size.y = show_size.x / tex_w_y;
+		if (target_share_camera) {
+			ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowPos(ImVec2(static_cast<float>(sc_width - 340), 20.0f), ImGuiCond_FirstUseEver);
+			ImGui::Begin("camera", nullptr, ImGuiWindowFlags_NoScrollbar);
+
+			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
+			ImVec2 winSize = ImGui::GetWindowSize();
+			winSize.y -= titleBarH;
+			const float img_w_y = static_cast<float>(cam_w) / cam_h;
+			const float win_w_y = winSize.x / winSize.y;
+			ImVec2 show_img_size;
+			float offsetX, offsetY;
+			if (img_w_y > win_w_y) {
+				offsetX = 0.0f;
+				show_img_size.x = winSize.x;
+				show_img_size.y = show_img_size.x / img_w_y;
+				offsetY = (winSize.y - show_img_size.y) / 2;
 			}
 			else {
-				show_size.y = avail.y;
-				show_size.x = show_size.y * tex_w_y;
+				offsetY = 0.0f;
+				show_img_size.y = winSize.y;
+				show_img_size.x = show_img_size.y * img_w_y;
+				offsetX = (winSize.x - show_img_size.x) / 2;
 			}
-			ImGui::SetCursorPos(ImVec2(
-				(avail.x - show_size.x) * 0.5f,
-				(avail.y - show_size.y) * 0.5f));
-
-			ImGui::Image(camTexture->id(), show_size, ImVec2(0, 1), ImVec2(1, 0));
-
-
+			offsetY += titleBarH;
+			ImGui::SetCursorPos(ImVec2{ offsetX, offsetY });
+			ImGui::Image(camTexture.id(), show_img_size, ImVec2(0, 1), ImVec2(1, 0));
 			ImGui::End();
 		}
+////////////////////////////
+
+
 
 		style->Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
 		// ============ main window ============ 
@@ -1473,8 +1473,7 @@ ClientApp::Page ClientApp::Show() {
 				share_video = users[get(ui.room_user.chosen_user)].share_video;
 			}
 			
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, img.id());
+			img.bindTo(0);
 
 			if (share_video) {
 				img.resize(nullptr, width, height, 4);

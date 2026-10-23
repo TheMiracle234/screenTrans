@@ -13,7 +13,7 @@
 #	include "imgui.h"
 #	include "imgui_impl_glfw.h"
 #	include "imgui_impl_opengl3.h"
-
+#	include "imgui_internal.h"
 #	if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
 #		pragma comment(lib, "legacy_stdio_definitions")
 #	endif
@@ -26,6 +26,7 @@
 #include <audio/Capture.hpp>
 #include <audio/Player.hpp>
 #include <audio/User.hpp>
+#include <audio/Compress.hpp>
 #include <ScreenCapture.h>
 #include <st_signals.h>
 #include <Room.h>
@@ -112,10 +113,9 @@ template <typename CB>
 class ClientApp {
 private:
 	CameraCapture m_cameraCapture;
-	bool m_enableCamera = false;
+	std::mutex mtx_camera;
 	void EnableCamera(bool enable);
 	void CameraCaptureThread();
-
 	void CameraCaptureEncode();
 	void CameraDecode();
 	static inline constexpr size_t send_camera_packets_count = 4;
@@ -145,7 +145,6 @@ private:
 	void audioRecv();
 	void ScreenCaptureEncode();
 	void ScreenDecode();
-	void CameraCapture();
 	void audioMix();
 	void asrRecv();
 private:
@@ -282,6 +281,8 @@ private:
 
 	audio::User audioUser{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	audio::Player audioPlayer{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, &audioUser, audio::User::callback };
+	audio::Compressor audioCompressor{ audio::sampleRate, audio::channels };
+
 	net::tcp::Client client{ net::tcp::Ip::v4 };
 	net::tcp::Client client_audio{ net::tcp::Ip::v4 };
 
@@ -294,6 +295,7 @@ private:
 		struct {
 			ALIGN(bool8_t) share_audio {};
 			ALIGN(bool8_t) share_video {};
+			ALIGN(bool8_t) share_camera {};
 			ALIGN(boost::float64_t) fps{20};
 		} send;
 		struct {

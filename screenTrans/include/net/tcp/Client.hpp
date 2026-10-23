@@ -65,6 +65,8 @@ namespace net {
         End tar;
     };
 
+    constexpr EndSrcTar same_end = EndSrcTar{ End::native, End::native };
+
     namespace tcp {
 
         class Client
