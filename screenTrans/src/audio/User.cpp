@@ -51,4 +51,13 @@ namespace audio {
         }
     }
 
+    void User::clearLeft() {
+#ifdef USE_MUTEX
+        std::lock_guard lk(m_buf_mtx);
+        m_buf.clear();
+#else
+        m_buf.reset();
+#endif
+    }
+
 } // namespace audio

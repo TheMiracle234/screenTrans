@@ -32,6 +32,7 @@ namespace audio {
         User(uint32_t sampleRate, uint32_t channels,
             uint32_t periodSizeInFrames, double buf_sec);
         void pushFrames(const float* frames, size_t samples);
+        void clearLeft();
         static void callback(ma_device* pDevice, void* pOutput,
             const void* pInput, ma_uint32 frameCount);
     };

@@ -27,9 +27,6 @@
     <ClCompile Include="src\CameraCapture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\App.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ClientApp.hpp">
