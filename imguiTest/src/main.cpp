@@ -33,6 +33,8 @@ static_assert(false, "unsupported platform font");
 #include <audio/Player.hpp>
 #include <audio/User.hpp>
 
+#include <plugin/asr.h>
+
 #include <boost/cstdfloat.hpp>
 
 namespace audio {
@@ -168,6 +170,7 @@ int main() {
 			last_time = next_frame;
 		}
 		});
+
 
 	while (!window->shouldClose()) {
 

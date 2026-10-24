@@ -27,6 +27,9 @@
     <ClCompile Include="src\CameraCapture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\Mp4Recorder.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ClientApp.hpp">
@@ -45,6 +48,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\CameraCapture.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Mp4Recorder.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

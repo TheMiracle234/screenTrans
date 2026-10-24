@@ -31,6 +31,7 @@
 #include <st_signals.h>
 #include <Room.h>
 #include <util/util.hpp>
+#include <util/Timer.hpp>
 
 #include <plugin/Loader.hpp>
 #include <plugin/Asr.hpp>
@@ -46,6 +47,8 @@
 #include <vector>
 #include <chrono>
 #include <semaphore>
+#include <format>
+
 using std::literals::chrono_literals::operator""ms;
 using std::literals::chrono_literals::operator""s;
 
@@ -68,7 +71,9 @@ using std::literals::chrono_literals::operator""s;
 #include <gl/util.h>
 
 #include <compile_time.hpp>
-#include "CameraCapture.hpp"
+#include <CameraCapture.hpp>
+
+#include <Mp4Recorder.hpp>
 
 #ifndef NDEBUG
 #	define print(x) std::cout<< x
@@ -103,6 +108,28 @@ namespace audio {
 	inline constexpr boost::float64_t periodSec = static_cast<boost::float64_t>(periodSizeInFrames) / sampleRate;
 	//inline constexpr int mixPeriods = 1;
 	inline constexpr double bufSec = 1.0;
+}
+
+namespace record {
+	struct Frame {
+		std::vector<std::shared_ptr<ST::DecodedFrame>> images;
+		int imageWidth;
+		int imageHeight;
+		int64_t videoPtsUs;
+		std::vector<float> audio;
+		int channels;
+		int sampleRate;
+		int64_t audioPtsUs;
+
+		void restore() {
+			channels = audio::channels;
+			sampleRate = audio::sampleRate;
+			videoPtsUs = -1;
+			audioPtsUs = -1;
+			images.clear();
+			audio.clear();
+		}
+	};
 }
 
 inline constexpr size_t words_msg_max_count = 128;
@@ -145,8 +172,11 @@ private:
 	void audioRecv();
 	void ScreenCaptureEncode();
 	void ScreenDecode();
+	void videoRecord();
 	void audioMix();
 	void asrRecv();
+private:
+	void initVideoRecord();
 private:
 	void storeUiState();
 	void loadUiState();
@@ -210,6 +240,7 @@ private:
 		std::counting_semaphore<> wait_threads{0};
 	}p_show;
 	Page Show();
+	void initBeforeShow();
 	void restoreAfterShow();
 
 	struct {
@@ -253,7 +284,7 @@ private:
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_screen_packets{ send_screen_packets_count };
 	static inline constexpr size_t recv_screen_packets_count = 4;
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_screen_packets{ recv_screen_packets_count };
-	boost::lockfree::spsc_queue<ST::DecodedFrame> total_video_frames_v1{ 4 };
+	boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>> total_video_frames_v1{ 4 };
 
 	boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ 4 };
 	boost::lockfree::spsc_queue<ST::DecodedFrame> local_camera_frames{ 4 };
@@ -287,6 +318,14 @@ private:
 	net::tcp::Client client_audio{ net::tcp::Ip::v4 };
 
 	using bool8_t = std::conditional_t<sizeof(bool) == 1, bool, uint8_t>;
+
+
+	std::shared_mutex mtx_videoRecord;
+	record::Mp4Recorder videoRecorder{};
+	int videoRecordFrameRecording{ 0 };
+	std::array<record::Frame, 2> videoRecordFrame;
+	util::Timer videoRecordTimer;
+	std::atomic<int64_t> recordAudioSamples;
 
 	struct Ui {
 		P1 p1;
@@ -347,6 +386,7 @@ private:
 			std::atomic<bool> is_kicked_off{ false };
 			std::atomic<bool> is_muted_keep{ false };
 			std::atomic<user::id_t> chosen_user; // init with self
+			std::atomic<bool> record_video{ false };
 			struct {
 				std::atomic<user::id_t> wanna_kick_off{ user::invalid_id };
 				std::atomic<user::id_t> transfer_host{ user::invalid_id };
