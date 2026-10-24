@@ -36,6 +36,7 @@
 #include "libavutil/buffer.h"
 #include "libavutil/dict.h"
 #include "libavutil/rational.h"
+#include "version_major.h"
 
 /** Data type identifiers for TIFF tags */
 enum AVTiffDataType {

@@ -105,7 +105,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>false</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg_x264;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
@@ -127,7 +127,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>false</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;thirdparty/include/ffmpeg_x264;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>

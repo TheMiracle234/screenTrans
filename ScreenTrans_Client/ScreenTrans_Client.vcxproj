@@ -119,7 +119,7 @@
       <PreprocessorDefinitions>GLEW_STATIC;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
@@ -139,7 +139,7 @@
       <PreprocessorDefinitions>GLEW_STATIC;NDEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>
