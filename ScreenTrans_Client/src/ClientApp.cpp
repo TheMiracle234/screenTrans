@@ -3,8 +3,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <ClientApp.hpp>
 
-#include <util/Timer.hpp>
-
 #ifndef NDEBUG
 #	include <filesystem>
 #endif//NDEBUG
@@ -778,10 +776,74 @@ void ClientApp::ScreenDecode() {
 		for (size_t i = 0;i < pkts_count;++i) {
 			auto frames = decoder.DecodePacket(pkts[i]);
 			for (auto& frame : frames) {
-				total_video_frames_v1.push(std::move(frame));
+				auto frame_ptr = std::make_shared<ST::DecodedFrame>(std::move(frame));
+				if (ui.room_user.record_video) {
+					if (mtx_videoRecord.try_lock_shared()) {
+						DEFER([this]() { mtx_videoRecord.unlock_shared(); });
+						if (videoRecordFrame[1 ^ videoRecordFrameRecording].images.empty()) {
+							videoRecordFrame[1 ^ videoRecordFrameRecording].images.push_back(frame_ptr);
+							videoRecordFrame[1 ^ videoRecordFrameRecording].videoPtsUs = static_cast<int64_t>(videoRecordTimer.microseconds());
+						}
+					}
+				}
+				total_video_frames_v1.push(frame_ptr);
 			}
 		}
 	}
+}
+
+// 生成 "record/2026-10-24_143052.mp4"
+static inline std::string makeRecordPath() {
+	using namespace std::chrono;
+	auto now = system_clock::now();
+	auto t = floor<seconds>(now);
+	auto zt = zoned_time{ current_zone(), t };     // 本地时区
+	auto local = zt.get_local_time();
+	auto ymd = year_month_day{ floor<days>(local) };
+	auto tod = hh_mm_ss<seconds>{ local - floor<days>(local) };
+
+	std::string path = std::format("record/video-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}.mp4",
+		int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()),
+		tod.hours().count(), tod.minutes().count(), tod.seconds().count());
+
+	// 顺手确保目录存在
+	std::error_code ec;
+	std::filesystem::create_directories("record", ec);
+	return path;
+}
+
+void ClientApp::initVideoRecord() {
+	videoRecordTimer.restart();
+	recordAudioSamples = 0;
+}
+
+void ClientApp::videoRecord() {
+	auto last_time = std::chrono::steady_clock::now();
+	while (!get(ui.room_user.record_video));
+	while (!p_show.ended() && !clientClosed() && get(ui.room_user.record_video)) {
+		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<boost::float64_t>(1.0 / videoRecorder.videoFps())
+		);
+		auto next_frame = last_time + target_interval;
+		std::this_thread::sleep_until(next_frame);
+		last_time = next_frame;
+
+		{
+			std::lock_guard lock(mtx_videoRecord);
+			videoRecordFrameRecording ^= 1;
+		}
+		videoRecorder.addFramesTimed(
+			videoRecordFrame[videoRecordFrameRecording].images,
+			videoRecordFrame[videoRecordFrameRecording].videoPtsUs,
+			videoRecordFrame[videoRecordFrameRecording].audio,
+			videoRecordFrame[videoRecordFrameRecording].channels,
+			videoRecordFrame[videoRecordFrameRecording].sampleRate,
+			videoRecordFrame[videoRecordFrameRecording].audioPtsUs
+		);
+		videoRecordFrame[videoRecordFrameRecording].restore();
+	}
+	videoRecorder.save(makeRecordPath());
+	println("end!!!");
 }
 
 static inline void audioDataStandard(std::vector<float>& buf, const size_t samples) {
@@ -845,6 +907,7 @@ void ClientApp::audioMix()
 		getBuf.resize(samples, 0);
 
 		std::fill(mixBufWithOutMe.begin(), mixBufWithOutMe.end(), 0.0f );
+		std::fill(mixBuf.begin(), mixBuf.end(), 0.0f);
 
 		size_t realSamples = 0;
 
@@ -881,14 +944,33 @@ void ClientApp::audioMix()
 		audioDataStandard(mixBufWithOutMe, realSamples);
 		audioDataStandard(mixBuf, realSamples);
 
+		if (get(ui.room_user.record_video)) {
+			if (mtx_videoRecord.try_lock_shared()) {
+				DEFER([this]() { mtx_videoRecord.unlock_shared(); });
+				auto& frame = videoRecordFrame[1 ^ videoRecordFrameRecording];
+				const auto us = recordAudioSamples.fetch_add(static_cast<int64_t>(realSamples * 1000'000 / audio::sampleRate));
+				if (frame.audio.empty()) {
+					frame.audioPtsUs = static_cast<int64_t>(us);
+				}
+				frame.audio.insert(frame.audio.end(), mixBuf.begin(), mixBuf.begin() + realSamples);
+			}
+		}
+
 		{
 #if USE_ASR
 			std::lock_guard lock(mtx_audioFramesLong);
 			audioFramesLong.insert(audioFramesLong.end(), mixBuf.begin(), mixBuf.begin() + realSamples);
 #endif
 		}
+
+
+#define LISTEN_MYSELF 1
 		audioUser.pushFrames(
+#if !LISTEN_MYSELF
 			mixBufWithOutMe.data(),
+#else
+			mixBuf.data(),
+#endif
 			realSamples
 		);
 	}
@@ -967,14 +1049,21 @@ void ClientApp::restoreAfterShow() {
 		});
 }
 
-ClientApp::Page ClientApp::Show() {
-
+void ClientApp::initBeforeShow() {
 	set(ui.room_user.chosen_user, get(logger.id));
 	{
 		std::lock_guard lock2{ mtx_users };
 		auto [itr, first] = users.try_emplace(get(ui.room_user.chosen_user));
 		itr->second.name = logger.name;
 	}
+	
+
+	videoRecordFrame[0].restore();
+	videoRecordFrame[1].restore();
+}
+
+ClientApp::Page ClientApp::Show() {
+	initBeforeShow();
 
 	constexpr size_t thread_count = 11;
 
@@ -1019,6 +1108,8 @@ ClientApp::Page ClientApp::Show() {
 	std::vector<uint8_t> camPixelBuffer;
 	ST::DecodedFrame cam_frame;
 
+	std::unique_ptr<std::jthread> record_thread;
+
 
 #if USE_IMGUI
 	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
@@ -1044,7 +1135,7 @@ ClientApp::Page ClientApp::Show() {
 		char rename[sizeof(p1.name)]{};
 		uint32_t room_passwd{ Room::invalid_passwd };
 	} mid;
-	ST::DecodedFrame decodedFrame;
+	std::shared_ptr<ST::DecodedFrame> decodedFrame;
 
 
 	auto last_time = std::chrono::steady_clock::now();
@@ -1069,7 +1160,7 @@ ClientApp::Page ClientApp::Show() {
 		//vaoImg.bind();
 		//gl::draw(eboImg, gl::DrawMode::TRIANGLES);
 
-		DEFER {
+		DEFER{
 			[this]() {window->swapBuffers();}
 		};
 
@@ -1080,280 +1171,290 @@ ClientApp::Page ClientApp::Show() {
 		if (ImGui::IsKeyPressed(ImGuiKey_Escape))
 			show_settings = !show_settings;
 
-	if (show_settings) {
-		ImGui::Begin((char*)u8"settings");
-		if (ImGui::Button("<-")) {
-			p_show.setEnd(true, ShowPara::End::Return);
-		}
-		if (ImGui::TreeNode("message")) {
-			ImGui::PushIdGuard pushIdGuard(__LINE__);
-			// real_fps
-			ImGui::Text("real_fps: %.3f", get(ui.send.real_fps));
-			// fps
-			COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.send.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
-			// share_video
-			COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
-			// share_audio
-			COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
-			// words_msg
-			if (get(ui.send.words_msg_target) == user::public_target) {
-				constexpr const char public_target[] = "public";
-				memcpy(mid.name_buf, public_target, sizeof(public_target));
+		if (show_settings) {
+			ImGui::Begin((char*)u8"settings");
+			if (ImGui::Button("<-")) {
+				p_show.setEnd(true, ShowPara::End::Return);
 			}
-			else {
-				std::lock_guard lock(mtx_users);
-				auto& name = users[get(ui.send.words_msg_target)].name;
-				memcpy(mid.name_buf, name.c_str(), name.size() + 1);
-			}
-			ImGui::Text("message_target: ");
-			if (ImGui::BeginCombo("##message_targets", mid.name_buf)) {
-				while (true) {
-					if (ImGui::Selectable("public")) {
-						set(ui.send.words_msg_target, user::public_target);
-						break;
-					}
-					{
-						std::lock_guard lock(mtx_users);
-						for (const auto& user : users) {
-							if (user.first == logger.id) { continue; }
-							ImGui::PushU64Guard pushU64Guard(user.first);
-							if (ImGui::Selectable(user.second.name.c_str())) {
-								set(ui.send.words_msg_target, user.first);
-								break;
+			if (ImGui::TreeNode("message")) {
+				ImGui::PushIdGuard pushIdGuard(__LINE__);
+				// real_fps
+				ImGui::Text("real_fps: %.3f", get(ui.send.real_fps));
+				// fps
+				COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.send.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
+				// share_video
+				COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
+				// share_audio
+				COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
+				// words_msg
+				if (get(ui.send.words_msg_target) == user::public_target) {
+					constexpr const char public_target[] = "public";
+					memcpy(mid.name_buf, public_target, sizeof(public_target));
+				}
+				else {
+					std::lock_guard lock(mtx_users);
+					auto& name = users[get(ui.send.words_msg_target)].name;
+					memcpy(mid.name_buf, name.c_str(), name.size() + 1);
+				}
+				ImGui::Text("message_target: ");
+				if (ImGui::BeginCombo("##message_targets", mid.name_buf)) {
+					while (true) {
+						if (ImGui::Selectable("public")) {
+							set(ui.send.words_msg_target, user::public_target);
+							break;
+						}
+						{
+							std::lock_guard lock(mtx_users);
+							for (const auto& user : users) {
+								if (user.first == logger.id) { continue; }
+								ImGui::PushU64Guard pushU64Guard(user.first);
+								if (ImGui::Selectable(user.second.name.c_str())) {
+									set(ui.send.words_msg_target, user.first);
+									break;
+								}
 							}
 						}
+						break;
 					}
-					break;
+					ImGui::EndCombo();
+				}// ##message_targets
+				// total_words_msg
+				ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
+				ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
+				if (ui.send.words_msg_target == user::public_target) {
+					std::lock_guard lock{ ui.send.total_words_msg.mtx };
+					for (const auto& msg : ui.send.total_words_msg.buf) {
+						ImGui::TextUnformatted(msg.c_str());
+					}
 				}
-				ImGui::EndCombo();
-			}// ##message_targets
-			// total_words_msg
-			ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
-			ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
-			if(ui.send.words_msg_target == user::public_target) {
-				std::lock_guard lock{ ui.send.total_words_msg.mtx };
-				for (const auto& msg : ui.send.total_words_msg.buf) {
-					ImGui::TextUnformatted(msg.c_str());
+				else {
+					std::lock_guard lock(mtx_users);
+					auto& msgs = users[get(ui.send.words_msg_target)].total_words_msg;
+					for (const auto& msg : msgs.buf) {
+						ImGui::TextUnformatted(msg.c_str());
+					}
 				}
-			}
-			else {
-				std::lock_guard lock(mtx_users);
-				auto& msgs = users[get(ui.send.words_msg_target)].total_words_msg;
-				for (const auto& msg : msgs.buf) {
-					ImGui::TextUnformatted(msg.c_str());
+				ImGui::PopTextWrapPos();
+				ImGui::EndChild();
+				// words_msg
+				ImGui::InputText("##message", mid.words_msg_buf, sizeof(mid.words_msg_buf));
+				ImGui::SameLine();
+				if (ImGui::Button("send")) {
+					std::lock_guard lock(ui.send.words_msg.mtx);
+					memcpy(ui.send.words_msg.buf, mid.words_msg_buf, sizeof(mid.words_msg_buf));
+					mid.words_msg_buf[0] = '\0';
 				}
-			}
-			ImGui::PopTextWrapPos();
-			ImGui::EndChild();
-			// words_msg
-			ImGui::InputText("##message", mid.words_msg_buf, sizeof(mid.words_msg_buf));
-			ImGui::SameLine();
-			if (ImGui::Button("send")) {
-				std::lock_guard lock(ui.send.words_msg.mtx);
-				memcpy(ui.send.words_msg.buf, mid.words_msg_buf, sizeof(mid.words_msg_buf));
-				mid.words_msg_buf[0] = '\0';
-			}
 
-			ImGui::TreePop();
-		}// message
-		if (ImGui::TreeNode("vedio")) {
-			ImGui::PushIdGuard pushIdGuard(__LINE__);
-			// fps
-			if (d_time > 0.4) {
-				fps = ImGui::GetIO().Framerate;
-				d_time = 0;
-			}
-			ImGui::Text("FPS: %.3f", fps);
-			COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.video.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
-			if (ImGui::TreeNode("encode")) {
-				// fps
-				COMP_ATOMIC(ImGui::SliderInt, "fps", ui.video.encode.fps, static_cast<int>(MIN_MAX_FPS), static_cast<int>(MAX_MAX_FPS));
-				// bitrate
-				COMP_ATOMIC(ImGui::SliderInt, "bitrate", ui.video.encode.bitrate, video::min_bitrate, video::max_bitrate);
-				// width
-				COMP_ATOMIC_EX(ImGui::SliderInt, "width", ui.video.encode.width, [](int v) {return v & ~1;}, static_cast<int>(sc_width * 0.1), sc_width);
-				// height
-				COMP_ATOMIC_EX(ImGui::SliderInt, "height", ui.video.encode.height, [](int v) {return v & ~1;}, static_cast<int>(sc_height * 0.1), sc_height);
 				ImGui::TreePop();
-			}// encode
-			ImGui::TreePop();
-		}// vedio
-		if (ImGui::TreeNode("room_user")) {
+			}// message
+			if (ImGui::TreeNode("vedio")) {
+				ImGui::PushIdGuard pushIdGuard(__LINE__);
+				// fps
+				if (d_time > 0.4) {
+					fps = ImGui::GetIO().Framerate;
+					d_time = 0;
+				}
+				ImGui::Text("FPS: %.3f", fps);
+				COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.video.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
+				if (ImGui::TreeNode("encode")) {
+					// fps
+					COMP_ATOMIC(ImGui::SliderInt, "fps", ui.video.encode.fps, static_cast<int>(MIN_MAX_FPS), static_cast<int>(MAX_MAX_FPS));
+					// bitrate
+					COMP_ATOMIC(ImGui::SliderInt, "bitrate", ui.video.encode.bitrate, video::min_bitrate, video::max_bitrate);
+					// width
+					COMP_ATOMIC_EX(ImGui::SliderInt, "width", ui.video.encode.width, [](int v) {return v & ~1;}, static_cast<int>(sc_width * 0.1), sc_width);
+					// height
+					COMP_ATOMIC_EX(ImGui::SliderInt, "height", ui.video.encode.height, [](int v) {return v & ~1;}, static_cast<int>(sc_height * 0.1), sc_height);
+					ImGui::TreePop();
+				}// encode
+				ImGui::TreePop();
+			}// vedio
+			if (ImGui::TreeNode("room_user")) {
 #			ifndef NDEBUG
 				ImGui::Text("id: %zu", (size_t)(get(logger.id)));
 				ImGui::Text("socket: %zu", (size_t)(client.Id()));
 #			endif
-			// name
-			ImGui::Text("name: %s", logger.name.c_str());
-			// room id
-			uint32_t const_room_id = logger.room_id;
-			ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
-			// rename
-			ImGui::InputText("##rename", mid.rename, sizeof(mid.rename), ImGuiInputTextFlags_CharsNoBlank);
-			ImGui::SameLine();
-			if (ImGui::Button("rename")) {
+				// name
+				ImGui::Text("name: %s", logger.name.c_str());
+				// room id
+				uint32_t const_room_id = logger.room_id;
+				ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
+				// rename
+				ImGui::InputText("##rename", mid.rename, sizeof(mid.rename), ImGuiInputTextFlags_CharsNoBlank);
+				ImGui::SameLine();
+				if (ImGui::Button("rename")) {
+					{
+						std::lock_guard lock(logger.mtx_name);
+						logger.name = mid.rename;
+					}
+					glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
+				}
+				// record_video
+				bool record_video0 = get(ui.room_user.record_video);
+				bool record_video1 = record_video0;
+				ImGui::Checkbox("record_video", &record_video1);
+				if (record_video0 != record_video1 && record_video1) {
+					initVideoRecord();
+					record_thread = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
+				}
+				set(ui.room_user.record_video, record_video1);
+
+				// share_video
+				COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
+				// share_camera
+				COMP_ATOMIC(ImGui::Checkbox, "share_camera", ui.send.share_camera);
+				// share_audio
+				COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
+				// is_muted_keep
+				bool is_muted_keep = ui.room_user.is_muted_keep;
+				ImGui::SameLine();
+				ImGui::Checkbox("is_muted", &is_muted_keep);
 				{
-					std::lock_guard lock(logger.mtx_name);
-					logger.name = mid.rename;
-				}
-				glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
-			}
-			// share_video
-			COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
-			// share_camera
-			COMP_ATOMIC(ImGui::Checkbox, "share_camera", ui.send.share_camera);
-			// share_audio
-			COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
-			// is_muted_keep
-			bool is_muted_keep = ui.room_user.is_muted_keep;
-			ImGui::SameLine();
-			ImGui::Checkbox("is_muted", &is_muted_keep);
-			{
-				ImGui::PushIdGuard pushIdGuard(__LINE__);
-				std::lock_guard lock(mtx_users);
-				auto chosen = users.find(get(ui.room_user.chosen_user));
-				assert(chosen != users.end());
-				//auto name_chosen = users[chosen->first].name + (get(users[chosen->first].is_host) ? "(host)" : "");
-				auto& chosen_user = users[chosen->first];
-				constexpr char host_signal[] = "(host)";
-				memcpy(mid.name_buf, chosen_user.name.c_str(), chosen_user.name.size() + 1);
-				if (get(chosen_user.is_host)) {
-					memcpy(mid.name_buf + chosen_user.name.size(), &host_signal, sizeof(host_signal));
-				}
-				ImGui::Text("target:");
-				if (ImGui::TreeNode("target", mid.name_buf)) {
-					const bool is_host = isHost<false>();
-					if (ImGui::BeginTable("##target_users", is_host ? 6 : 4, ImGuiTableFlags_SizingFixedFit)) {
-						ImGui::TableSetupColumn("target");
-						ImGui::TableSetupColumn("video");
-						ImGui::TableSetupColumn("audio");
-						ImGui::TableSetupColumn("aloud");
-						if (is_host) {
-							ImGui::TableSetupColumn("kick_off");
-							ImGui::TableSetupColumn("transfer_host");
-						}
-						ImGui::TableHeadersRow();
-						for (auto& user : users) {
-							ImGui::PushU64Guard pushU64Guard(user.first);
-
-							const size_t name_len = user.second.name.size();
-							memcpy(mid.name_buf, user.second.name.c_str(), name_len + 1);
-							size_t name_buf_size = user.second.name.size();
-							if (get(user.second.is_host)) {
-								memcpy(mid.name_buf + name_len, &host_signal, sizeof(host_signal));
-								name_buf_size += sizeof(host_signal);
-							}
-
-							// select user
-							ImGui::TableNextColumn();
-							if (ImGui::Selectable(mid.name_buf)) {
-								set(ui.room_user.chosen_user, user.first);
-							}
-							// share_video
-							bool v = get(user.second.share_video);
-							ImGui::TableNextColumn();
-							ImGui::Checkbox("##video", &v);
-							// share_audio
-							v = get(user.second.share_audio);
-							ImGui::TableNextColumn();
-							ImGui::Checkbox("##audio", &v);
-							// audio_playing
-							constexpr const char audio_playing[] = ">))";
-							constexpr const char no_audio_playing[sizeof(audio_playing)] = "___";
-							ImGui::TableNextColumn();
-							if (get(user.second.audio_playing)) {
-								ImGui::Text(audio_playing);
-							}
-							else {
-								ImGui::Text(no_audio_playing);
-							}
-
+					ImGui::PushIdGuard pushIdGuard(__LINE__);
+					std::lock_guard lock(mtx_users);
+					auto chosen = users.find(get(ui.room_user.chosen_user));
+					assert(chosen != users.end());
+					//auto name_chosen = users[chosen->first].name + (get(users[chosen->first].is_host) ? "(host)" : "");
+					auto& chosen_user = users[chosen->first];
+					constexpr char host_signal[] = "(host)";
+					memcpy(mid.name_buf, chosen_user.name.c_str(), chosen_user.name.size() + 1);
+					if (get(chosen_user.is_host)) {
+						memcpy(mid.name_buf + chosen_user.name.size(), &host_signal, sizeof(host_signal));
+					}
+					ImGui::Text("target:");
+					if (ImGui::TreeNode("target", mid.name_buf)) {
+						const bool is_host = isHost<false>();
+						if (ImGui::BeginTable("##target_users", is_host ? 6 : 4, ImGuiTableFlags_SizingFixedFit)) {
+							ImGui::TableSetupColumn("target");
+							ImGui::TableSetupColumn("video");
+							ImGui::TableSetupColumn("audio");
+							ImGui::TableSetupColumn("aloud");
 							if (is_host) {
+								ImGui::TableSetupColumn("kick_off");
+								ImGui::TableSetupColumn("transfer_host");
+							}
+							ImGui::TableHeadersRow();
+							for (auto& user : users) {
+								ImGui::PushU64Guard pushU64Guard(user.first);
+
+								const size_t name_len = user.second.name.size();
+								memcpy(mid.name_buf, user.second.name.c_str(), name_len + 1);
+								size_t name_buf_size = user.second.name.size();
+								if (get(user.second.is_host)) {
+									memcpy(mid.name_buf + name_len, &host_signal, sizeof(host_signal));
+									name_buf_size += sizeof(host_signal);
+								}
+
+								// select user
 								ImGui::TableNextColumn();
-								// kick off
-								if (!user.second.is_host) {
-									if (ImGui::Button("kick_off")) {
-										set(ui.room_user.host.wanna_kick_off, user.first);
-									}
+								if (ImGui::Selectable(mid.name_buf)) {
+									set(ui.room_user.chosen_user, user.first);
+								}
+								// share_video
+								bool v = get(user.second.share_video);
+								ImGui::TableNextColumn();
+								ImGui::Checkbox("##video", &v);
+								// share_audio
+								v = get(user.second.share_audio);
+								ImGui::TableNextColumn();
+								ImGui::Checkbox("##audio", &v);
+								// audio_playing
+								constexpr const char audio_playing[] = ">))";
+								constexpr const char no_audio_playing[sizeof(audio_playing)] = "___";
+								ImGui::TableNextColumn();
+								if (get(user.second.audio_playing)) {
+									ImGui::Text(audio_playing);
 								}
 								else {
-									ImGui::Button("(host)");
+									ImGui::Text(no_audio_playing);
 								}
-								// transfer
-								ImGui::TableNextColumn();
-								if (ImGui::Button("transfer")) {
-									set(ui.room_user.host.transfer_host, user.first);
+
+								if (is_host) {
+									ImGui::TableNextColumn();
+									// kick off
+									if (!user.second.is_host) {
+										if (ImGui::Button("kick_off")) {
+											set(ui.room_user.host.wanna_kick_off, user.first);
+										}
+									}
+									else {
+										ImGui::Button("(host)");
+									}
+									// transfer
+									ImGui::TableNextColumn();
+									if (ImGui::Button("transfer")) {
+										set(ui.room_user.host.transfer_host, user.first);
+									}
 								}
 							}
+							ImGui::EndTable();
 						}
-						ImGui::EndTable();
+						ImGui::TreePop();
+					}
+				}
+
+				ImGui::TreePop();
+			}// room_user
+
+			if (isHost<true>() && ImGui::TreeNode("host")) {
+				uint32_t const_room_passwd = get(ui.room_user.host.room_passwd);
+				// mute_all_once 
+				bool mute_all_once = get(ui.room_user.host.mute_all_once);
+				mute_all_once |= ImGui::Button("mute_all_once");
+				set(ui.room_user.host.mute_all_once, mute_all_once);
+				// mute_all_keep
+				COMP_ATOMIC(ImGui::Checkbox, "mute_all_keep", ui.room_user.host.mute_all_keep);
+				// room_id
+				uint32_t const_room_id = logger.room_id;
+				ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
+				// room_passwd
+				ImGui::InputScalar("room_passwd", ImGuiDataType_U32, &const_room_passwd);
+				ImGui::InputScalar("##set_room_passwd", ImGuiDataType_U32, &mid.room_passwd);
+				ImGui::SameLine();
+				if (ImGui::Button("reset_passwd")) {
+					set(ui.room_user.host.set_room_passwd, mid.room_passwd);
+					set(ui.room_user.host.room_passwd, mid.room_passwd);
+				}
+				if (ImGui::TreeNode("kick_off", "kick_off_target")) {
+					{
+						std::lock_guard lock(mtx_users);
+						for (const auto& user : users) {
+							ImGui::PushU64Guard pushU64Guard(user.first);
+							if (get(user.second.is_host)) {
+								continue;
+							}
+							if (ImGui::Selectable(user.second.name.c_str())) {
+								set(ui.room_user.host.wanna_kick_off, user.first);
+								println("kick off user_id: " << user.first);
+							}
+						}
 					}
 					ImGui::TreePop();
 				}
-			}
-
-			ImGui::TreePop();
-		}// room_user
-
-		if (isHost<true>() && ImGui::TreeNode("host")) {
-			uint32_t const_room_passwd = get(ui.room_user.host.room_passwd);
-			// mute_all_once 
-			bool mute_all_once = get(ui.room_user.host.mute_all_once);
-			mute_all_once |= ImGui::Button("mute_all_once");
-			set(ui.room_user.host.mute_all_once, mute_all_once);
-			// mute_all_keep
-			COMP_ATOMIC(ImGui::Checkbox, "mute_all_keep", ui.room_user.host.mute_all_keep);
-			// room_id
-			uint32_t const_room_id = logger.room_id;
-			ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
-			// room_passwd
-			ImGui::InputScalar("room_passwd", ImGuiDataType_U32, &const_room_passwd);
-			ImGui::InputScalar("##set_room_passwd", ImGuiDataType_U32, &mid.room_passwd);
-			ImGui::SameLine();
-			if (ImGui::Button("reset_passwd")) {
-				set(ui.room_user.host.set_room_passwd, mid.room_passwd);
-				set(ui.room_user.host.room_passwd, mid.room_passwd);
-			}
-			if (ImGui::TreeNode("kick_off", "kick_off_target")) {
-				{
-					std::lock_guard lock(mtx_users);
-					for (const auto& user : users) {
-						ImGui::PushU64Guard pushU64Guard(user.first);
-						if (get(user.second.is_host)) {
-							continue;
-						}
-						if (ImGui::Selectable(user.second.name.c_str())) {
-							set(ui.room_user.host.wanna_kick_off, user.first);
-							println("kick off user_id: " << user.first);
-						}
-					}
-				}
 				ImGui::TreePop();
-			}
-			ImGui::TreePop();
-		}// host
+			}// host
 
-		if (ImGui::TreeNode("plugin")) {
-			ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
-			ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
-			{
-				std::lock_guard lock(mtx_speechWords);
-				ImGui::TextUnformatted(speechWords.c_str());
-			}
-			ImGui::PopTextWrapPos();
-			ImGui::EndChild();
-			ImGui::TreePop();
-		}// plugin
+			if (ImGui::TreeNode("plugin")) {
+				ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
+				ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
+				{
+					std::lock_guard lock(mtx_speechWords);
+					ImGui::TextUnformatted(speechWords.c_str());
+				}
+				ImGui::PopTextWrapPos();
+				ImGui::EndChild();
+				ImGui::TreePop();
+			}// plugin
 
-		ImGui::End();
-	}// settings
+			ImGui::End();
+		}// settings
 
 
-		// ============ main window ============ 
+			// ============ main window ============ 
 		style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
 		ImGui::Begin("screen", nullptr, ImGuiWindowFlags_NoScrollbar);
 		{
-			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f :  ImGui::GetFrameHeight();
+			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
 			ImVec2 winSize = ImGui::GetWindowSize();
 			winSize.y -= titleBarH;
 			const auto imgSize = img.imgSize();
@@ -1381,7 +1482,7 @@ ClientApp::Page ClientApp::Show() {
 		}
 		ImGui::End();// main
 
-//////////////////////////// camera
+		//////////////////////////// camera
 		const user::id_t target_id = get(ui.room_user.chosen_user);
 		bool target_share_camera;
 		{
@@ -1432,7 +1533,7 @@ ClientApp::Page ClientApp::Show() {
 			ImGui::Image(camTexture.id(), show_img_size, ImVec2(0, 1), ImVec2(1, 0));
 			ImGui::End();
 		}
-////////////////////////////
+		////////////////////////////
 
 
 
@@ -1462,11 +1563,19 @@ ClientApp::Page ClientApp::Show() {
 			total_video_frames_v1.pop(decodedFrame);
 		}
 
-		int width = decodedFrame.width;
-		int height = decodedFrame.height;
-		auto& data = decodedFrame.rgba;
 
-		if (width > 0 && height > 0 && data.size() == (size_t)width * height * 4) {
+		int width{};
+		int height{};
+		std::vector<uint8_t>* data{};
+
+		if (decodedFrame) [[likely]] {
+			width = decodedFrame->width;
+			height = decodedFrame->height;
+			data = &decodedFrame->rgba;
+		}
+
+
+		if (decodedFrame && width > 0 && height > 0 && data->size() == (size_t)width * height * 4) {
 			bool share_video;
 			{
 				std::lock_guard lock(mtx_users);
@@ -1477,7 +1586,7 @@ ClientApp::Page ClientApp::Show() {
 
 			if (share_video) {
 				img.resize(nullptr, width, height, 4);
-				img.resetData(data, 4);
+				img.resetData(*data, 4);
 			}
 			else {
 				img.resize(nullptr, 1, 1, 4);
