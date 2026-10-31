@@ -12,18 +12,27 @@ namespace plugin {
 	public:
 		Loader() = default;
 		bool load(const char* u8_path) {
-			if (h) { FreeLibrary(h); }
-			return static_cast<bool>(h = LoadLibraryW(wins::Utf8ToWide(u8_path).c_str()));
+			free();
+			h = LoadLibraryW(wins::Utf8ToWide(u8_path).c_str());
+			return h != nullptr;
 		}
 		template<typename Fn>
 		bool get(Fn& out, const char* func) {
-			assert(h);
+			assert(on());
 			return (out = reinterpret_cast<Fn>(GetProcAddress(h, func)));
 		}
+		void free() {
+			if (h) {
+				auto save = h;
+				h = nullptr;
+				FreeLibrary(save);
+			}
+		}
 		~Loader() {
-			if (h) { FreeLibrary(h); }
+			free();
 		}
 	private:
+		bool on() const { return h != nullptr; }
 		HMODULE h{};
 	};
 }

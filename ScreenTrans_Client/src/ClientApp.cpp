@@ -16,8 +16,6 @@
 #include <inttypes.h>
 #include <cstdlib>
 
-#include <atomic_imgui.hpp>
-
 #ifdef _WIN32
 #	include <timeapi.h>
 #	pragma comment(lib, "winmm.lib")
@@ -63,52 +61,7 @@ template <typename CB>
 }
 
 #if USE_IMGUI
-namespace ImGui {
-	static void DockingSpace() {
-		ImGuiViewport* viewport = ImGui::GetMainViewport();
-		ImGui::SetNextWindowPos(viewport->WorkPos);
-		ImGui::SetNextWindowSize(viewport->WorkSize);
-		ImGui::SetNextWindowViewport(viewport->ID);
 
-		constexpr ImGuiWindowFlags dock_flags = ImGuiWindowFlags_NoDocking |
-			ImGuiWindowFlags_NoTitleBar |
-			ImGuiWindowFlags_NoCollapse |
-			ImGuiWindowFlags_NoResize |
-			ImGuiWindowFlags_NoMove |
-			ImGuiWindowFlags_NoBringToFrontOnFocus |
-			ImGuiWindowFlags_NoNavFocus |
-			ImGuiWindowFlags_NoBackground;
-
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-		ImGui::Begin("MainDockSpace", nullptr, dock_flags);
-		ImGui::PopStyleVar(3);
-
-		ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
-		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
-	}
-
-	void PushU64(uint64_t id) {
-		ImGui::PushID(static_cast<int>( id & 0xFFFFFFFFu));
-		ImGui::PushID(static_cast<int>((id >> 32) & 0xFFFFFFFFu));
-	}
-
-	void PopU64() {
-		ImGui::PopID();
-		ImGui::PopID();
-	}
-
-	struct PushU64Guard {
-		PushU64Guard(uint64_t id) { PushU64(id); }
-		~PushU64Guard() { PopU64(); }
-	};
-
-	struct PushIdGuard {
-		PushIdGuard(int id) { ImGui::PushID(id); }
-		~PushIdGuard() { ImGui::PopID(); }
-	};
-}
 #endif
 
 std::unique_ptr<gl::Window> ClientApp::makeWindow() {
@@ -126,8 +79,9 @@ std::unique_ptr<gl::Window> ClientApp::makeWindow() {
 	return res;
 }
 
-void ClientApp::EnableCamera(bool enable) {
-	if (enable) {
+template<bool enable>
+void ClientApp::EnableCamera() {
+	if constexpr (enable) {
 		if(!m_cameraCapture.IsOpened()) {
 			bool ret;
 			{
@@ -135,11 +89,11 @@ void ClientApp::EnableCamera(bool enable) {
 				ret = m_cameraCapture.Open();
 			}
 			if (ret) [[likely]] {
-				set(ui.send.share_camera, true);
+				//set(ui.send.share_camera, true);
 				std::cout << "摄像头开启成功" << std::endl;
 			}
 			else {
-				set(ui.send.share_camera, false);
+				//set(ui.send.share_camera, false);
 				std::cout << "摄像头开启失败" << std::endl;
 			}
 			ST::DecodedFrame dummy;
@@ -152,14 +106,21 @@ void ClientApp::EnableCamera(bool enable) {
 		if(m_cameraCapture.IsOpened()) {
 			m_cameraCapture.Close();
 		}
-		set(ui.send.share_camera, false);
+		//set(ui.send.share_camera, false);
 	}
 }
 
 void ClientApp::CameraCaptureThread() {
-	DEFER{
-		[this]() {p_show.wait_threads.release(); }
-	};
+	//DEFER{
+	//	[this]() {p_show.wait_threads.release(); }
+	//};
+
+	EnableCamera<true>();
+	cam_ok = m_cameraCapture.IsOpened();
+	cam_sync0.release();
+	cam_sync1.acquire();
+	EnableCamera<false>();
+
 
 	std::vector<uint8_t> camBuf;
 	int camW = 0, camH = 0;
@@ -180,11 +141,11 @@ void ClientApp::CameraCaptureThread() {
 		bool wantCamera = get(ui.send.share_camera);
 		
 		if (wantCamera && !m_cameraCapture.IsOpened()) {
-			EnableCamera(true);
+			EnableCamera<true>();
 		}
 		
 		if (!wantCamera && m_cameraCapture.IsOpened()) {
-			EnableCamera(false);
+			EnableCamera<false>();
 		}
 
 		if (!wantCamera) {
@@ -203,23 +164,42 @@ void ClientApp::CameraCaptureThread() {
 		}
 	}
 
+	EnableCamera<false>();
 }
 //发送转码
 void ClientApp::CameraCaptureEncode() {
-	DEFER{
-		[this]() {p_show.wait_threads.release(); }
-	};
+	//DEFER{
+	//	[this]() {p_show.wait_threads.release(); }
+	//};
 	ST::DecodedFrame frame;
-	while (!p_show.ended() && !clientClosed()) {
-		if (total_capture_frames.pop(frame)) break;
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	int w = 1, h = 1;
+	util::Timer timer;
+	cam_sync0.acquire();
+	if (cam_ok) {
+		std::vector<uint8_t> camBuf;
+		int camW = 0, camH = 0;
+		while (!p_show.ended() && !clientClosed()) {			
+			if (timer.seconds() > 2.0) { break; }
+			bool camHasFrame = m_cameraCapture.GetFrame(camBuf, camW, camH);
+			if (camHasFrame) {
+				frame.width = camW;
+				frame.height = camH;
+				frame.rgba.swap(camBuf);
+				break;
+			}
+		}
+		w = frame.width & ~1;
+		h = frame.height & ~1;
 	}
-	if (p_show.ended() || clientClosed()) return;
+	cam_sync1.release();
+	set(ui.camera.encode.width, w);
+	set(ui.camera.encode.height, h);
+	ui.camera.encode.wait_wh.release(2);
 
-	int w = frame.width & ~1;
-	int h = frame.height & ~1;
 
-	ST::H264Encoder encoder(w, h, get(ui.video.encode.fps), get(ui.video.encode.bitrate));
+
+
+	ST::H264Encoder encoder(w, h, get(ui.camera.encode.fps), get(ui.camera.encode.bitrate));
 	auto last_time = std::chrono::steady_clock::now();
 
 	while (!p_show.ended() && !clientClosed()){
@@ -239,6 +219,10 @@ void ClientApp::CameraCaptureEncode() {
 		std::this_thread::sleep_until(next_frame);
 		last_time = next_frame;
 
+		encoder.Reset(w, h, ui.camera.encode.width, ui.camera.encode.height, ui.camera.encode.fps, ui.camera.encode.bitrate);
+		set(ui.camera.encode.width, encoder.Width());
+		set(ui.camera.encode.height, encoder.Height());
+
 		auto pkts = encoder.EncodeFrame(frame.rgba);
         
 
@@ -255,9 +239,9 @@ void ClientApp::CameraCaptureEncode() {
 }
 
 void ClientApp::CameraDecode() {
-	DEFER{ [this]() {
-		p_show.wait_threads.release();
-	} };
+	//DEFER{ [this]() {
+	//	p_show.wait_threads.release();
+	//} };
 	H264Decoder decoder;
 	std::vector<std::vector<uint8_t>> pkts(recv_camera_packets_count);
 	while (!p_show.ended() && !clientClosed()) {
@@ -297,6 +281,10 @@ void ClientApp::storeUiState() {
 	buf_ui.video.encode.bitrate = net::host_to_network(get(ui.video.encode.bitrate));
 	buf_ui.video.encode.width = net::host_to_network(get(ui.video.encode.width));
 	buf_ui.video.encode.height = net::host_to_network(get(ui.video.encode.height));
+	buf_ui.camera.encode.fps = net::host_to_network(get(ui.camera.encode.fps));
+	buf_ui.camera.encode.bitrate = net::host_to_network(get(ui.camera.encode.bitrate));
+	buf_ui.camera.encode.width = net::host_to_network(get(ui.camera.encode.width));
+	buf_ui.camera.encode.height = net::host_to_network(get(ui.camera.encode.height));
 	buf_ui.room_user.host.set_room_passwd = net::host_to_network(get(ui.room_user.host.set_room_passwd));
 	buf_ui.room_user.host.mute_all_keep = net::host_to_network(get(ui.room_user.host.mute_all_keep));
 	constexpr size_t END = __LINE__; // === END ===
@@ -331,21 +319,14 @@ void ClientApp::loadUiState() {
 	set(	ui.video.encode.bitrate,			net::network_to_host(buf_ui.video.encode.bitrate));
 	set(	ui.video.encode.width,				net::network_to_host(buf_ui.video.encode.width));
 	set(	ui.video.encode.height,				net::network_to_host(buf_ui.video.encode.height));
+	set(	ui.camera.encode.fps,				net::network_to_host(buf_ui.camera.encode.fps));
+	set(	ui.camera.encode.bitrate,			net::network_to_host(buf_ui.camera.encode.bitrate));
+	set(	ui.camera.encode.width,				net::network_to_host(buf_ui.camera.encode.width));
+	set(	ui.camera.encode.height,			net::network_to_host(buf_ui.camera.encode.height));
 	set(	ui.room_user.host.set_room_passwd,	net::network_to_host(buf_ui.room_user.host.set_room_passwd));
 	set(	ui.room_user.host.mute_all_keep,	net::network_to_host(buf_ui.room_user.host.mute_all_keep));
 	constexpr size_t END = __LINE__; // === END ===
 	static_assert(END - BEGIN == count_basic_members<Ui>());
-}
-
-template<bool lock_users>
-bool ClientApp::isHost() {
-	if constexpr (lock_users) {
-		std::lock_guard lock(mtx_users);
-		return get(users[get(logger.id)].is_host);
-	}
-	else {
-		return get(users[get(logger.id)].is_host);
-	}
 }
 
 bool ClientApp::clientClosed() {
@@ -354,9 +335,9 @@ bool ClientApp::clientClosed() {
 }
 
 void ClientApp::Receive() {
-	DEFER{ [this]() {
-		p_show.wait_threads.release();
-	}};
+	//DEFER{ [this]() {
+	//	p_show.wait_threads.release();
+	//}};
 
 	struct {
 		Signal signals{};
@@ -375,10 +356,14 @@ void ClientApp::Receive() {
 		char words_msg[words_msg_bytes];
 		bool share_video{};
 		int32_t pk_size{};
+		int32_t video_w;
+		int32_t video_h;
 		std::vector<uint8_t> pk{};
 
 		bool share_camera{};
 		int32_t cam_pk_size{};
+		int32_t cam_w;
+		int32_t cam_h;
 		std::vector<uint8_t> cam_pk{};
 
 		void restore() {
@@ -411,16 +396,7 @@ void ClientApp::Receive() {
 		if (!client.ReceiveBy(rv.is_host_from_client)) [[unlikely]] { break; }
 		if (rv.is_host_from_client) {
 			client.ReceiveBy(rv.wanna_kick_off);
-			//client.ReceiveBy(rv.mute_all_once);
-			//client.ReceiveBy(rv.mute_all_keep);
 		}
-		//if (!client.ReceiveBy(rv.share_audio)) [[unlikely]] { break; }
-		//if (rv.share_audio) {
-			//client.ReceiveBy(rv.audioFrames);
-		//}
-		//else {
-			//rv.audioFrames.resize(0);
-		//}
 
 		if (!client.ReceiveBy(rv.has_words_msg)) [[unlikely]] { break; }
 		if (rv.has_words_msg) [[unlikely]] {
@@ -448,24 +424,12 @@ void ClientApp::Receive() {
 			if (rv.wanna_kick_off == get(logger.id)) [[unlikely]] {
 				p_show.setEnd(true, ShowPara::End::kickOff);
 			}
-			//if (rv.mute_all_once && rv.id != logger.id) [[unlikely]] {
-			//	set(ui.send.share_audio, false);
-			//}
-			//if (rv.mute_all_keep && rv.id != logger.id) {
-			//	set(ui.send.share_audio, false);
-			//	set(ui.room_user.is_muted_keep, true);
-			//}
-			//else {
-			//	set(ui.room_user.is_muted_keep, false);
-			//}
 		}
 		{
 			std::lock_guard lock(mtx_users);
 			auto [itr, first] = users.try_emplace(rv.id);
 			itr->second.name = rv.other_name;
 			auto& user = itr->second;
-			//user.audioBuf.push(rv.audioFrames.begin(), rv.audioFrames.end());
-			//set(user.share_audio, rv.share_audio);
 			set(user.is_host, rv.is_host_from_server);
 			set(user.share_video, rv.share_video);
 		}
@@ -475,6 +439,10 @@ void ClientApp::Receive() {
 		// each packet
 		if (rv.share_video) {
 			if (!client.ReceiveBy(rv.pk_size)) [[unlikely]] { break; }
+			client.ReceiveBy(rv.video_w);
+			client.ReceiveBy(rv.video_h);
+			set(rv_sc_orig_w, rv.video_w);
+			set(rv_sc_orig_h, rv.video_h);
 			const net::EndSrcTar endSrcTar{
 				rv.signals & signal_littleEnd ? net::End::little : net::End::big, 
 				net::End::native
@@ -493,6 +461,10 @@ void ClientApp::Receive() {
 		if (rv.share_camera)
 		{
 			if (!client.ReceiveBy(rv.cam_pk_size)) [[unlikely]] { break; }
+			client.ReceiveBy(rv.cam_w);
+			client.ReceiveBy(rv.cam_h);
+			set(rv_cam_orig_w, rv.cam_w);
+			set(rv_cam_orig_h, rv.cam_h);
 			const net::EndSrcTar endSrcTar{
 				rv.signals & signal_littleEnd ? net::End::little : net::End::big,
 				net::End::native
@@ -507,14 +479,21 @@ void ClientApp::Receive() {
 }
 
 void ClientApp::Send() {
-	DEFER{
-		[this]() {p_show.wait_threads.release();}
-	};
+	//DEFER{
+	//	[this]() {p_show.wait_threads.release();}
+	//};
 
-	auto last_time = std::chrono::steady_clock::now();
+	ui.video.encode.wait_wh.acquire();
+	const int sc_w = ui.video.encode.width;
+	const int sc_h = ui.video.encode.height;
+	ui.camera.encode.wait_wh.acquire();
+	const int cam_w = ui.camera.encode.width;
+	const int cam_h = ui.camera.encode.height;
+
 	util::Timer timer;
 	timer.restart();
 	double sum_time{};
+	auto last_time = std::chrono::steady_clock::now();
 	while(!p_show.ended() && !clientClosed()){
 		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<boost::float64_t>(1.0 / get(ui.send.fps))
@@ -584,6 +563,8 @@ void ClientApp::Send() {
 		client.Send(get(ui.room_user.chosen_user));
 		client.Send(share_video);
 		if (share_video) {
+			client.Send(sc_w);
+			client.Send(sc_h);
 			client.Send(pk_size);
 			for (size_t i = 0;i < pk_size;++i) {
 				auto& packet = packets[i];
@@ -598,6 +579,8 @@ void ClientApp::Send() {
 
 		client.Send(share_camera);
 		if (share_camera){
+			client.Send(cam_w);
+			client.Send(cam_h);
 			client.Send(cam_pk_size);
 			for (int32_t i = 0; i < cam_pk_size; i++){
 				client.Send(cam_packets[i]);
@@ -607,9 +590,9 @@ void ClientApp::Send() {
 }
 
 void ClientApp::audioSend(){
-	DEFER{
-		[this]() {p_show.wait_threads.release();}
-	};
+	//DEFER{
+	//	[this]() {p_show.wait_threads.release();}
+	//};
 	audio::Capture ad_cpt{ audio::sampleRate, audio::channels, audio::periodSizeInFrames, audio::bufSec };
 	ad_cpt.Start();
 	std::vector<float> buf_audio{};
@@ -653,7 +636,7 @@ void ClientApp::audioSend(){
 void ClientApp::audioRecv(){
 	DEFER{ [this]() {
 		audioPlayer.stop();
-		p_show.wait_threads.release();
+		//p_show.wait_threads.release();
 	}};
 	audioPlayer.start();
 	
@@ -717,9 +700,9 @@ void ClientApp::audioRecv(){
 }
 
 void ClientApp::ScreenCaptureEncode() {
-	DEFER{
-		[this]() {p_show.wait_threads.release();}
-	};
+	//DEFER{
+	//	[this]() {p_show.wait_threads.release();}
+	//};
 	ScreenCapture capture;
 	if (!capture.Initialize()) {
 		std::cerr << "capture.Initialize() error\n";
@@ -731,7 +714,7 @@ void ClientApp::ScreenCaptureEncode() {
 	const int h = capture.Height() & ~1;
 	set(ui.video.encode.width, w);
 	set(ui.video.encode.height, h);
-	ui.video.encode.wait_wh.release();
+	ui.video.encode.wait_wh.release(2);
 	ST::H264Encoder encoder(w, h, ui.video.encode.fps, ui.video.encode.bitrate);
 
 	auto last_time = std::chrono::steady_clock::now();
@@ -766,9 +749,9 @@ void ClientApp::ScreenCaptureEncode() {
 }
 
 void ClientApp::ScreenDecode() {
-	DEFER{ [this]() {
-		p_show.wait_threads.release();
-	} };
+	//DEFER{ [this]() {
+	//	p_show.wait_threads.release();
+	//} };
 	H264Decoder decoder;
 	std::vector<std::vector<uint8_t>> pkts(recv_screen_packets_count);
 	while (!p_show.ended() && !clientClosed()) {
@@ -863,31 +846,24 @@ static inline void audioDataStandard(std::vector<float>& buf, const size_t sampl
 			std::abs(*max_it);
 
 		if (maxVal > 1.0f) {
-
-			std::ranges::for_each(
-				buf.begin(),
-				buf.begin() + samples,
-				[maxVal](float& v) {
-					v /= maxVal;
-				}
-			);
+			std::ranges::for_each( buf.begin(), buf.begin() + samples, [maxVal](float& v) {
+				if (!std::isfinite(v)) [[unlikely]] { v = 0; }
+				v /= maxVal;
+			});
+		}
+		else {
+			std::ranges::for_each( buf.begin(), buf.begin() + samples, [](float& v) {
+				if (!std::isfinite(v)) [[unlikely]] { v = 0; }
+			});
 		}
 	}
 }
 
 void ClientApp::audioMix()
 {
-	DEFER{
-		[this]() { p_show.wait_threads.release(); }
-	};
-
-	//constexpr int sleep_ms = 10;
-	//constexpr int target_fps = 1000 / sleep_ms;
-	//const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-	//	std::chrono::duration<boost::float64_t>(1.0 / target_fps)
-	//);
-
-	//constexpr size_t samples = sleep_ms * audio::sampleRate / 1000 * audio::channels;
+	//DEFER{
+	//	[this]() { p_show.wait_threads.release(); }
+	//};
 
 	std::vector<float> mixBuf{};
 	std::vector<float> mixBufWithOutMe{};
@@ -898,6 +874,8 @@ void ClientApp::audioMix()
 	timer.restart();
 	while (!p_show.ended() && !clientClosed()) {
 		std::this_thread::sleep_for(50ms);
+
+
 
 		const int sleep_ms = static_cast<int>(timer.milliseconds());
 		timer.restart();
@@ -956,70 +934,20 @@ void ClientApp::audioMix()
 			}
 		}
 
-		{
-#if USE_ASR
-			std::lock_guard lock(mtx_audioFramesLong);
-			audioFramesLong.insert(audioFramesLong.end(), mixBuf.begin(), mixBuf.begin() + realSamples);
-#endif
-		}
-
-
-#define LISTEN_MYSELF 1
 		audioUser.pushFrames(
-#if !LISTEN_MYSELF
-			mixBufWithOutMe.data(),
-#else
+#if LISTEN_MYSELF
 			mixBuf.data(),
+#else
+			mixBufWithOutMe.data(),
 #endif
 			realSamples
 		);
-	}
-}
-
-void ClientApp::asrRecv()
-{
-	DEFER{
-		[this]() {p_show.wait_threads.release();}
-	};
-	std::vector<float> audioBuf;
-	while(!p_show.ended() && !clientClosed()) {
-		std::this_thread::sleep_for(200ms);
 
 		{
-			std::lock_guard lock(mtx_audioFramesLong);
-			audioBuf.resize(audioFramesLong.size());
-			std::copy(audioFramesLong.begin(), audioFramesLong.end(), audioBuf.begin());
-		}
-		if (audioBuf.empty()) { continue; }
-
-
-		int out_bytes = 0;
-		 println( "asr.transcribe begin, " << "samples = " << audioBuf.size() << ", seconds = " << static_cast<boost::float64_t>( audioBuf.size() ) / 16000.0 );
-
-#if USE_ASR
-		 const char* str = plug.asr.transcribe( audioBuf.data(), static_cast<int>( audioBuf.size() ), &out_bytes );
-#else
-		 const char* str = nullptr;
-#endif
-		/*
-		 * ========================================================
-		 * 保存识别结果
-		 * ========================================================
-		 */
-		if ( str ) {
-			printf("got it\n");
-			{
-				std::lock_guard lock(mtx_audioFramesLong);
-				audioFramesLong.clear();
+			std::lock_guard lock(plug.asr.mtx);
+			if (asrOn<false>()) {
+				asrPushData<false>(mixBuf);
 			}
-			{
-				std::lock_guard lock(mtx_speechWords);
-				speechWords.assign(str, out_bytes);
-				printf("get: %s\n", speechWords.c_str());
-			}
-		} else if(speechWords.size() > audio::sampleRate * audio::channels * 20){
-			printf("not yet\n");
-			speechWords.clear();
 		}
 	}
 }
@@ -1062,580 +990,6 @@ void ClientApp::initBeforeShow() {
 	videoRecordFrame[1].restore();
 }
 
-ClientApp::Page ClientApp::Show() {
-	initBeforeShow();
-
-	constexpr size_t thread_count = 11;
-
-	DEFER{ [this, thread_count]() {
-		client.Close();
-		client_audio.Close();
-		for (size_t i = 0;i < thread_count;++i) {
-			p_show.wait_threads.acquire();
-		}
-		restoreAfterShow();
-	}};
-
-	std::jthread threads[] = {
-		std::jthread{ &ClientApp::audioMix, this },
-		std::jthread{ &ClientApp::Send, this },
-		std::jthread{ &ClientApp::Receive, this },
-		std::jthread{ &ClientApp::audioSend, this },
-		std::jthread{ &ClientApp::audioRecv, this },
-		std::jthread{ &ClientApp::asrRecv, this },
-		std::jthread{ &ClientApp::ScreenCaptureEncode, this },
-		std::jthread{ &ClientApp::ScreenDecode, this },
-		std::jthread{ &ClientApp::CameraCaptureThread, this },
-		std::jthread{ &ClientApp::CameraCaptureEncode, this },
-		std::jthread{ &ClientApp::CameraDecode, this },
-	};
-
-	static_assert(thread_count == sizeof(threads) / sizeof(std::jthread));
-
-	ui.video.encode.wait_wh.acquire();
-
-	//assert(thread_count == threads.size());
-
-	glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
-		
-	struct imgStruct {
-		float pos[3];
-		float texCoords[2];
-	};
-
-	gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
-	gl::Texture2D camTexture(1, 1, {0,0,0,0}, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
-	std::vector<uint8_t> camPixelBuffer;
-	ST::DecodedFrame cam_frame;
-
-	std::unique_ptr<std::jthread> record_thread;
-
-
-#if USE_IMGUI
-	const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
-#endif
-
-	int sc_width{};
-	int sc_height{};
-	{
-		GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-		assert(monitor);
-		const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-		assert(mode);
-		sc_width = mode->width;
-		sc_height = mode->height;
-	}
-
-	boost::float64_t d_time = 0;
-	float fps = 0;
-	bool show_settings = true;
-	struct {
-		char words_msg_buf[sizeof(ui.send.words_msg.buf)]{};
-		char name_buf[2 * sizeof(p1.name)]{};
-		char rename[sizeof(p1.name)]{};
-		uint32_t room_passwd{ Room::invalid_passwd };
-	} mid;
-	std::shared_ptr<ST::DecodedFrame> decodedFrame;
-
-
-	auto last_time = std::chrono::steady_clock::now();
-	auto renderDealing = [&]() {
-		const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-			std::chrono::duration<boost::float64_t>(1.0 / get(ui.video.fps))
-		);
-		auto next_frame = last_time + target_interval;
-		std::this_thread::sleep_until(next_frame);
-		last_time = next_frame;
-
-#if USE_IMGUI
-		// Start the Dear ImGui frame
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-#endif
-
-		glClearColor(0.1f, 0.1f, 0.1f, 0.1f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		//shader.use();
-		//vaoImg.bind();
-		//gl::draw(eboImg, gl::DrawMode::TRIANGLES);
-
-		DEFER{
-			[this]() {window->swapBuffers();}
-		};
-
-#if USE_IMGUI
-		ImGui::DockingSpace();
-
-		// ============ setting window ============ 
-		if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-			show_settings = !show_settings;
-
-		if (show_settings) {
-			ImGui::Begin((char*)u8"settings");
-			if (ImGui::Button("<-")) {
-				p_show.setEnd(true, ShowPara::End::Return);
-			}
-			if (ImGui::TreeNode("message")) {
-				ImGui::PushIdGuard pushIdGuard(__LINE__);
-				// real_fps
-				ImGui::Text("real_fps: %.3f", get(ui.send.real_fps));
-				// fps
-				COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.send.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
-				// share_video
-				COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
-				// share_audio
-				COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
-				// words_msg
-				if (get(ui.send.words_msg_target) == user::public_target) {
-					constexpr const char public_target[] = "public";
-					memcpy(mid.name_buf, public_target, sizeof(public_target));
-				}
-				else {
-					std::lock_guard lock(mtx_users);
-					auto& name = users[get(ui.send.words_msg_target)].name;
-					memcpy(mid.name_buf, name.c_str(), name.size() + 1);
-				}
-				ImGui::Text("message_target: ");
-				if (ImGui::BeginCombo("##message_targets", mid.name_buf)) {
-					while (true) {
-						if (ImGui::Selectable("public")) {
-							set(ui.send.words_msg_target, user::public_target);
-							break;
-						}
-						{
-							std::lock_guard lock(mtx_users);
-							for (const auto& user : users) {
-								if (user.first == logger.id) { continue; }
-								ImGui::PushU64Guard pushU64Guard(user.first);
-								if (ImGui::Selectable(user.second.name.c_str())) {
-									set(ui.send.words_msg_target, user.first);
-									break;
-								}
-							}
-						}
-						break;
-					}
-					ImGui::EndCombo();
-				}// ##message_targets
-				// total_words_msg
-				ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
-				ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
-				if (ui.send.words_msg_target == user::public_target) {
-					std::lock_guard lock{ ui.send.total_words_msg.mtx };
-					for (const auto& msg : ui.send.total_words_msg.buf) {
-						ImGui::TextUnformatted(msg.c_str());
-					}
-				}
-				else {
-					std::lock_guard lock(mtx_users);
-					auto& msgs = users[get(ui.send.words_msg_target)].total_words_msg;
-					for (const auto& msg : msgs.buf) {
-						ImGui::TextUnformatted(msg.c_str());
-					}
-				}
-				ImGui::PopTextWrapPos();
-				ImGui::EndChild();
-				// words_msg
-				ImGui::InputText("##message", mid.words_msg_buf, sizeof(mid.words_msg_buf));
-				ImGui::SameLine();
-				if (ImGui::Button("send")) {
-					std::lock_guard lock(ui.send.words_msg.mtx);
-					memcpy(ui.send.words_msg.buf, mid.words_msg_buf, sizeof(mid.words_msg_buf));
-					mid.words_msg_buf[0] = '\0';
-				}
-
-				ImGui::TreePop();
-			}// message
-			if (ImGui::TreeNode("vedio")) {
-				ImGui::PushIdGuard pushIdGuard(__LINE__);
-				// fps
-				if (d_time > 0.4) {
-					fps = ImGui::GetIO().Framerate;
-					d_time = 0;
-				}
-				ImGui::Text("FPS: %.3f", fps);
-				COMP_ATOMIC_T(ImGui::SliderScalar, "fps", ImGuiDataType_Double, ui.video.fps, &MIN_MAX_FPS, &MAX_MAX_FPS);
-				if (ImGui::TreeNode("encode")) {
-					// fps
-					COMP_ATOMIC(ImGui::SliderInt, "fps", ui.video.encode.fps, static_cast<int>(MIN_MAX_FPS), static_cast<int>(MAX_MAX_FPS));
-					// bitrate
-					COMP_ATOMIC(ImGui::SliderInt, "bitrate", ui.video.encode.bitrate, video::min_bitrate, video::max_bitrate);
-					// width
-					COMP_ATOMIC_EX(ImGui::SliderInt, "width", ui.video.encode.width, [](int v) {return v & ~1;}, static_cast<int>(sc_width * 0.1), sc_width);
-					// height
-					COMP_ATOMIC_EX(ImGui::SliderInt, "height", ui.video.encode.height, [](int v) {return v & ~1;}, static_cast<int>(sc_height * 0.1), sc_height);
-					ImGui::TreePop();
-				}// encode
-				ImGui::TreePop();
-			}// vedio
-			if (ImGui::TreeNode("room_user")) {
-#			ifndef NDEBUG
-				ImGui::Text("id: %zu", (size_t)(get(logger.id)));
-				ImGui::Text("socket: %zu", (size_t)(client.Id()));
-#			endif
-				// name
-				ImGui::Text("name: %s", logger.name.c_str());
-				// room id
-				uint32_t const_room_id = logger.room_id;
-				ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
-				// rename
-				ImGui::InputText("##rename", mid.rename, sizeof(mid.rename), ImGuiInputTextFlags_CharsNoBlank);
-				ImGui::SameLine();
-				if (ImGui::Button("rename")) {
-					{
-						std::lock_guard lock(logger.mtx_name);
-						logger.name = mid.rename;
-					}
-					glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
-				}
-				// record_video
-				bool record_video0 = get(ui.room_user.record_video);
-				bool record_video1 = record_video0;
-				ImGui::Checkbox("record_video", &record_video1);
-				if (record_video0 != record_video1 && record_video1) {
-					initVideoRecord();
-					record_thread = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
-				}
-				set(ui.room_user.record_video, record_video1);
-
-				// share_video
-				COMP_ATOMIC(ImGui::Checkbox, "share_video", ui.send.share_video);
-				// share_camera
-				COMP_ATOMIC(ImGui::Checkbox, "share_camera", ui.send.share_camera);
-				// share_audio
-				COMP_ATOMIC(ImGui::Checkbox, "share_audio", ui.send.share_audio);
-				// is_muted_keep
-				bool is_muted_keep = ui.room_user.is_muted_keep;
-				ImGui::SameLine();
-				ImGui::Checkbox("is_muted", &is_muted_keep);
-				{
-					ImGui::PushIdGuard pushIdGuard(__LINE__);
-					std::lock_guard lock(mtx_users);
-					auto chosen = users.find(get(ui.room_user.chosen_user));
-					assert(chosen != users.end());
-					//auto name_chosen = users[chosen->first].name + (get(users[chosen->first].is_host) ? "(host)" : "");
-					auto& chosen_user = users[chosen->first];
-					constexpr char host_signal[] = "(host)";
-					memcpy(mid.name_buf, chosen_user.name.c_str(), chosen_user.name.size() + 1);
-					if (get(chosen_user.is_host)) {
-						memcpy(mid.name_buf + chosen_user.name.size(), &host_signal, sizeof(host_signal));
-					}
-					ImGui::Text("target:");
-					if (ImGui::TreeNode("target", mid.name_buf)) {
-						const bool is_host = isHost<false>();
-						if (ImGui::BeginTable("##target_users", is_host ? 6 : 4, ImGuiTableFlags_SizingFixedFit)) {
-							ImGui::TableSetupColumn("target");
-							ImGui::TableSetupColumn("video");
-							ImGui::TableSetupColumn("audio");
-							ImGui::TableSetupColumn("aloud");
-							if (is_host) {
-								ImGui::TableSetupColumn("kick_off");
-								ImGui::TableSetupColumn("transfer_host");
-							}
-							ImGui::TableHeadersRow();
-							for (auto& user : users) {
-								ImGui::PushU64Guard pushU64Guard(user.first);
-
-								const size_t name_len = user.second.name.size();
-								memcpy(mid.name_buf, user.second.name.c_str(), name_len + 1);
-								size_t name_buf_size = user.second.name.size();
-								if (get(user.second.is_host)) {
-									memcpy(mid.name_buf + name_len, &host_signal, sizeof(host_signal));
-									name_buf_size += sizeof(host_signal);
-								}
-
-								// select user
-								ImGui::TableNextColumn();
-								if (ImGui::Selectable(mid.name_buf)) {
-									set(ui.room_user.chosen_user, user.first);
-								}
-								// share_video
-								bool v = get(user.second.share_video);
-								ImGui::TableNextColumn();
-								ImGui::Checkbox("##video", &v);
-								// share_audio
-								v = get(user.second.share_audio);
-								ImGui::TableNextColumn();
-								ImGui::Checkbox("##audio", &v);
-								// audio_playing
-								constexpr const char audio_playing[] = ">))";
-								constexpr const char no_audio_playing[sizeof(audio_playing)] = "___";
-								ImGui::TableNextColumn();
-								if (get(user.second.audio_playing)) {
-									ImGui::Text(audio_playing);
-								}
-								else {
-									ImGui::Text(no_audio_playing);
-								}
-
-								if (is_host) {
-									ImGui::TableNextColumn();
-									// kick off
-									if (!user.second.is_host) {
-										if (ImGui::Button("kick_off")) {
-											set(ui.room_user.host.wanna_kick_off, user.first);
-										}
-									}
-									else {
-										ImGui::Button("(host)");
-									}
-									// transfer
-									ImGui::TableNextColumn();
-									if (ImGui::Button("transfer")) {
-										set(ui.room_user.host.transfer_host, user.first);
-									}
-								}
-							}
-							ImGui::EndTable();
-						}
-						ImGui::TreePop();
-					}
-				}
-
-				ImGui::TreePop();
-			}// room_user
-
-			if (isHost<true>() && ImGui::TreeNode("host")) {
-				uint32_t const_room_passwd = get(ui.room_user.host.room_passwd);
-				// mute_all_once 
-				bool mute_all_once = get(ui.room_user.host.mute_all_once);
-				mute_all_once |= ImGui::Button("mute_all_once");
-				set(ui.room_user.host.mute_all_once, mute_all_once);
-				// mute_all_keep
-				COMP_ATOMIC(ImGui::Checkbox, "mute_all_keep", ui.room_user.host.mute_all_keep);
-				// room_id
-				uint32_t const_room_id = logger.room_id;
-				ImGui::InputScalar("room_id", ImGuiDataType_U32, &const_room_id);
-				// room_passwd
-				ImGui::InputScalar("room_passwd", ImGuiDataType_U32, &const_room_passwd);
-				ImGui::InputScalar("##set_room_passwd", ImGuiDataType_U32, &mid.room_passwd);
-				ImGui::SameLine();
-				if (ImGui::Button("reset_passwd")) {
-					set(ui.room_user.host.set_room_passwd, mid.room_passwd);
-					set(ui.room_user.host.room_passwd, mid.room_passwd);
-				}
-				if (ImGui::TreeNode("kick_off", "kick_off_target")) {
-					{
-						std::lock_guard lock(mtx_users);
-						for (const auto& user : users) {
-							ImGui::PushU64Guard pushU64Guard(user.first);
-							if (get(user.second.is_host)) {
-								continue;
-							}
-							if (ImGui::Selectable(user.second.name.c_str())) {
-								set(ui.room_user.host.wanna_kick_off, user.first);
-								println("kick off user_id: " << user.first);
-							}
-						}
-					}
-					ImGui::TreePop();
-				}
-				ImGui::TreePop();
-			}// host
-
-			if (ImGui::TreeNode("plugin")) {
-				ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
-				ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
-				{
-					std::lock_guard lock(mtx_speechWords);
-					ImGui::TextUnformatted(speechWords.c_str());
-				}
-				ImGui::PopTextWrapPos();
-				ImGui::EndChild();
-				ImGui::TreePop();
-			}// plugin
-
-			ImGui::End();
-		}// settings
-
-
-			// ============ main window ============ 
-		style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
-		ImGui::Begin("screen", nullptr, ImGuiWindowFlags_NoScrollbar);
-		{
-			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
-			ImVec2 winSize = ImGui::GetWindowSize();
-			winSize.y -= titleBarH;
-			const auto imgSize = img.imgSize();
-			ImVec2 show_img_size;
-
-			float offsetX{};
-			float offsetY{};
-			const float img_w_y = imgSize.x / imgSize.y;
-			const float win_w_y = winSize.x / winSize.y;
-			if (img_w_y > win_w_y) {
-				offsetX = 0.0f;
-				show_img_size.x = winSize.x;
-				show_img_size.y = show_img_size.x / img_w_y;
-				offsetY = (winSize.y - show_img_size.y) / 2;
-			}
-			else {
-				offsetY = 0.0f;
-				show_img_size.y = winSize.y;
-				show_img_size.x = show_img_size.y * img_w_y;
-				offsetX = (winSize.x - show_img_size.x) / 2;
-			}
-			offsetY += titleBarH;
-			ImGui::SetCursorPos(ImVec2(offsetX, offsetY));
-			ImGui::Image(img.id(), show_img_size);
-		}
-		ImGui::End();// main
-
-		//////////////////////////// camera
-		const user::id_t target_id = get(ui.room_user.chosen_user);
-		bool target_share_camera;
-		{
-			std::lock_guard lock(mtx_users);
-			target_share_camera = users[target_id].share_camera;
-		}
-
-		if (!total_camera_frames.empty()) {
-			total_camera_frames.pop(cam_frame);
-		}
-
-		int cam_w = cam_frame.width;
-		int cam_h = cam_frame.height;
-		auto& cam_data = cam_frame.rgba;
-		if (cam_w > 0 && cam_h > 0 && cam_data.size() == cam_w * cam_h * 4) {
-			camTexture.bindTo(0);
-			camTexture.resize(nullptr, cam_w, cam_h, 4);
-			camTexture.resetData(cam_frame.rgba, 4);
-		}
-
-
-		if (target_share_camera) {
-			ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f), ImGuiCond_FirstUseEver);
-			ImGui::SetNextWindowPos(ImVec2(static_cast<float>(sc_width - 340), 20.0f), ImGuiCond_FirstUseEver);
-			ImGui::Begin("camera", nullptr, ImGuiWindowFlags_NoScrollbar);
-
-			const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
-			ImVec2 winSize = ImGui::GetWindowSize();
-			winSize.y -= titleBarH;
-			const float img_w_y = static_cast<float>(cam_w) / cam_h;
-			const float win_w_y = winSize.x / winSize.y;
-			ImVec2 show_img_size;
-			float offsetX, offsetY;
-			if (img_w_y > win_w_y) {
-				offsetX = 0.0f;
-				show_img_size.x = winSize.x;
-				show_img_size.y = show_img_size.x / img_w_y;
-				offsetY = (winSize.y - show_img_size.y) / 2;
-			}
-			else {
-				offsetY = 0.0f;
-				show_img_size.y = winSize.y;
-				show_img_size.x = show_img_size.y * img_w_y;
-				offsetX = (winSize.x - show_img_size.x) / 2;
-			}
-			offsetY += titleBarH;
-			ImGui::SetCursorPos(ImVec2{ offsetX, offsetY });
-			ImGui::Image(camTexture.id(), show_img_size, ImVec2(0, 1), ImVec2(1, 0));
-			ImGui::End();
-		}
-		////////////////////////////
-
-
-
-		style->Colors[ImGuiCol_WindowBg] = DEFAULT_BK_COLOR;
-		// ============ main window ============ 
-
-		ImGui::End();//docking end
-		// Rendering
-		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-#if USE_IMGUI_VIEWPORT
-		{
-			GLFWwindow* backup = glfwGetCurrentContext();
-			ImGui::UpdatePlatformWindows();
-			ImGui::RenderPlatformWindowsDefault();
-			glfwMakeContextCurrent(backup);   // 恢复主上下文
-		}
-#endif// USE_IMGUI_VIEWPORT
-
-		d_time += 1 / (boost::float64_t)ImGui::GetIO().Framerate;
-#endif
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_TIME));
-
-
-		if (!total_video_frames_v1.empty()) {
-			total_video_frames_v1.pop(decodedFrame);
-		}
-
-
-		int width{};
-		int height{};
-		std::vector<uint8_t>* data{};
-
-		if (decodedFrame) [[likely]] {
-			width = decodedFrame->width;
-			height = decodedFrame->height;
-			data = &decodedFrame->rgba;
-		}
-
-
-		if (decodedFrame && width > 0 && height > 0 && data->size() == (size_t)width * height * 4) {
-			bool share_video;
-			{
-				std::lock_guard lock(mtx_users);
-				share_video = users[get(ui.room_user.chosen_user)].share_video;
-			}
-			
-			img.bindTo(0);
-
-			if (share_video) {
-				img.resize(nullptr, width, height, 4);
-				img.resetData(*data, 4);
-			}
-			else {
-				img.resize(nullptr, 1, 1, 4);
-				img.resetData({ 0,0,0,0 }, 4);
-			}
-		}
-	};
-	any_usage = &renderDealing;
-	using renderFuncType = decltype(renderDealing);
-	glfwSetWindowUserPointer(window->m_get, this);
-	glfwSetWindowPosCallback(window->m_get, [](GLFWwindow* window, int xpos, int ypos) {
-		auto user = static_cast<ClientApp*>(glfwGetWindowUserPointer(window));
-		user->window->updatePos({ xpos, ypos });
-		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
-		renderDealing();
-		});
-	glfwSetFramebufferSizeCallback(window->m_get, [](GLFWwindow* window, int width, int height) {
-		auto user = static_cast<ClientApp*>(glfwGetWindowUserPointer(window));
-		glViewport(0, 0, width, height);
-		user->window->setViewport({ 0,0,width, height });
-		auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
-		renderDealing();
-		});
-	while (!p_show.ended() && !clientClosed()) {
-		if (window->shouldClose()) [[unlikely]] { 
-			p_show.setEnd(true, ShowPara::End::Default); 
-			set(close_signal, true);  
-			return Page::Tmp; 
-		}
-		glfwPollEvents();
-		renderDealing();
-	}
-
-	println("show ended");
-	switch (p_show.showEnd()) {
-	case ShowPara::End::clientClosed:
-		return makeTmp("clientClosed", "your tcp socket closed in the middle.", Page::connectToServer);
-		break;
-	case ShowPara::End::kickOff:
-		return makeTmp("kickOff", "you are kicked off by the room host.", Page::connectToServer);
-		break;
-	case ShowPara::End::Return:
-		return Page::connectToServer;
-		break;
-	default:
-		assert(false);
-	}
-	return Page::Tmp;
-}
 
 ClientApp::Page ClientApp::Tmp() {
 	for (;;) {
@@ -1792,8 +1146,8 @@ ClientApp::Page ClientApp::connectToServer() {
 	user::id_t get_id;
 	bool first{ true };
 	loop {
-		client = net::tcp::Client{ net::tcp::Ip::v4 };
-		client_audio = net::tcp::Client{ net::tcp::Ip::v4 };
+		client = net::tcp::Client{ net::tcp::Ip::Auto };
+		client_audio = net::tcp::Client{ net::tcp::Ip::Auto };
 		loop {
 			if (window->shouldClose()) { set(close_signal, true); return Page::Tmp; }
 			PageRenderGuard pageRenderGuard{this, "connect to server", 20 };
@@ -1808,11 +1162,11 @@ ClientApp::Page ClientApp::connectToServer() {
 			if (ok && ImGui::Button("connect")) { break; }
 		}
 		bool sync_connection;
-		if (client.ConnectTo(net::tcp::Ip::v4, p1.ipv4, p1.port) &&
+		if (client.ConnectTo(net::tcp::Ip::Auto, p1.ipv4, p1.port) &&
 			client.Send(connect_user) &&
 			client.ReceiveBy(get_id) &&
 
-			client_audio.ConnectTo(net::tcp::Ip::v4, p1.ipv4, p1.port) &&
+			client_audio.ConnectTo(net::tcp::Ip::Auto, p1.ipv4, p1.port) &&
 			client_audio.Send(connect_audio) &&
 			client_audio.Send(get_id) &&
 			client_audio.ReceiveBy(sync_connection) &&
@@ -1901,15 +1255,6 @@ ClientApp::ClientApp() {
 	ImGui_ImplOpenGL3_Init("#version 330");
 #endif
 
-	bool ret{};
-	ret = plug.asr.loader.load("plugin/plugin_ASR.dll");
-	assert(ret);
-	plug.asr.loader.get(plug.asr.init, plugin::name::asrInit);
-	plug.asr.loader.get(plug.asr.transcribe, plugin::name::asrTranscribe);
-	plug.asr.loader.get(plug.asr.free, plugin::name::asrFree);
-	ret = plug.asr.init("plugin/ggml-tiny.bin") == 0;
-	assert(ret);
-
 
 	loadUiState();
 }
@@ -1918,8 +1263,6 @@ ClientApp::~ClientApp() {
 	m_cameraCapture.Close();
 
 	storeUiState();
-
-	plug.asr.free();
 
 #if USE_IMGUI
 
@@ -1940,7 +1283,117 @@ ClientApp::~ClientApp() {
 #endif
 }
 
+template<bool mtx>
+bool ClientApp::asrOn() {
+	if constexpr (mtx) {
+		std::lock_guard lock(plug.asr.mtx);
+		return static_cast<bool>(plug.asr.close) && static_cast<bool>(plug.asr.open);
+	}
+	else {
+		return static_cast<bool>(plug.asr.close) && static_cast<bool>(plug.asr.open);
+	}
+}
+
+void ClientApp::asrLoad() {
+	std::lock_guard lk(plug.asr.mtx);
+
+	if (plug.asr.stream) return; // 已经启用
+
+	// 防止上一次异常残留未释放
+	plug.asr.loader.free();
+
+	// 1. 加载 DLL
+	if (!plug.asr.loader.load((plug.asr.dir +  "/plugin_ASR.dll").c_str())) {
+		std::lock_guard ui_lk(plug.asr.ui.mtx);
+		plug.asr.ui.status = "ASR Load Failed: Cannot load DLL";
+		return;
+	}
+
+	// 2. 获取函数指针
+	bool got_funcs =
+		plug.asr.loader.get(plug.asr.open, plugin::asr::name::asrOpen) &&
+		plug.asr.loader.get(plug.asr.push, plugin::asr::name::asrPush) &&
+		plug.asr.loader.get(plug.asr.poll, plugin::asr::name::asrPoll) &&
+		plug.asr.loader.get(plug.asr.finish, plugin::asr::name::asrFinish) &&
+		plug.asr.loader.get(plug.asr.reset, plugin::asr::name::asrReset) &&
+		plug.asr.loader.get(plug.asr.close, plugin::asr::name::asrClose);
+
+	if (!got_funcs) {
+		plug.asr.loader.free();
+		std::lock_guard ui_lk(plug.asr.ui.mtx);
+		plug.asr.ui.status = "ASR Load Failed: Missing functions";
+		return;
+	}
+
+	// 3. 打开 ASR 流
+	char error[512] = {};
+	int32_t rc = plug.asr.open((plug.asr.dir + "/model").c_str(), 0, &plug.asr.stream, error, sizeof(error));
+	if (rc != PLUGIN_ASR_OK || !plug.asr.stream) {
+		plug.asr.stream = nullptr;
+		plug.asr.loader.free(); // 失败必须卸载
+		std::lock_guard ui_lk(plug.asr.ui.mtx);
+		plug.asr.ui.status = "ASR open failed: " + std::string(error);
+		return;
+	}
+
+	// 4. 启用成功
+	std::lock_guard ui_lk(plug.asr.ui.mtx);
+	plug.asr.ui.status = "ASR Started";
+}
+
+void ClientApp::asrDownload() {
+	std::lock_guard lk(plug.asr.mtx);
+	if (!plug.asr.stream && !plug.asr.close) return;
+
+	// 1. 提取指针并立刻将全局状态置空
+	auto* stream_to_close = plug.asr.stream;
+	auto close_fn = plug.asr.close;
+
+	plug.asr.stream = nullptr;
+	plug.asr.open = nullptr;
+	plug.asr.push = nullptr;
+	plug.asr.poll = nullptr;
+	plug.asr.finish = nullptr;
+	plug.asr.reset = nullptr;
+	plug.asr.close = nullptr;
+
+	// 2. 直接强杀对象（底层 abort_callback 会瞬间打断推理并释放内存）
+	if (stream_to_close) {
+		try {
+			if (close_fn) {
+				close_fn(stream_to_close);
+			}
+		}
+		catch (...) {}
+	}
+
+	// 3. 彻底卸载 DLL（绝对不泄漏）
+	plug.asr.loader.free();
+
+	// 4. 清理 UI
+	std::lock_guard ui_lk(plug.asr.ui.mtx);
+	plug.asr.ui.partial.clear();
+	plug.asr.ui.status = "ASR Stopped";
+}
+
+template<bool mtx>
+void ClientApp::asrPushData(std::vector<float>& audioFrames) {
+	static_assert(!mtx); // on purpose
+	//std::lock_guard lk(plug.asr.mtx);
+	if (plug.asr.stream && plug.asr.push) {
+		int32_t r = plug.asr.push(plug.asr.stream, audioFrames.data(),
+			static_cast<uint32_t>(audioFrames.size()));
+
+		if (r == PLUGIN_ASR_INVALID) {
+			std::lock_guard ui_lk(plug.asr.ui.mtx);
+			plug.asr.ui.status = "Push INVALID (audio data rejected)";
+		}
+	}
+}
+
 int main() {
 	auto app = std::make_unique<ClientApp>();
 	app->run();
 }
+
+#include <PageShow.inl>

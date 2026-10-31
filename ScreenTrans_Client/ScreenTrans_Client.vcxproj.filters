@@ -30,6 +30,9 @@
     <ClCompile Include="src\Mp4Recorder.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\PageShow.inl">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ClientApp.hpp">
@@ -41,7 +44,7 @@
     <ClInclude Include="include\H264Encoder.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\atomic_imgui.hpp">
+    <ClInclude Include="include\imgui_ex.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\compile_time.hpp">

@@ -3,6 +3,7 @@
 #ifndef NET_TCP_CLIENT_INL
 #define NET_TCP_CLIENT_INL
 
+#include "net/AddrInfo.hpp"
 #include "net/tcp/Client.hpp"
 #include <iostream>
 #include <cassert>
@@ -109,30 +110,76 @@ namespace tcp {
 	{
 	}
 
-	inline Client::Client(Ip ip_version):
-		skt{invalid_socket}
+	inline Client::Client(Ip ip_version) :
+		skt{ invalid_socket }
+#ifndef NDEBUG
+		, family_{ ip_version }
+#endif
 	{
-		if (!Init(ip_version)) [[unlikely]] {
-			std::cerr << "Client init error" << std::endl;
-			system("pause");
-			exit(1);
+		if (ip_version != Ip::Auto) {
+			if (!Init(ip_version)) [[unlikely]] {
+				std::cerr << "Client init error" << std::endl;
+				system("pause");
+				exit(1);
+			}
 		}
 	}
 
 	inline bool Client::ConnectTo(Ip ip_version, const char* ip, uint16_t port)
-	{		
-		sockaddr_in target{};
-		target.sin_family = static_cast<ip_t>(ip_version);
-		target.sin_port = htons(port);
-		target.sin_addr.s_addr = inet_addr(ip);
+	{
+#ifndef NDEBUG
+		assert(ip_version == family_
+			&& "Client::ConnectTo: ip_version must match the one passed to Client()");
+#endif
 
-		int res = connect(skt.id(), reinterpret_cast<sockaddr*>(&target), static_cast<socklen_t>(sizeof(target)));
-		if(res == socket_error) [[unlikely]] {
-			NET_SOCKET_SET_ERROR("connect() failed with error code: " + std::to_string(last_socket_error()));
+		auto addrs = AddrInfo::Resolve(ip, port, static_cast<ip_t>(ip_version),
+			SOCK_STREAM, IPPROTO_TCP, 0);
+		if (!addrs) [[unlikely]] {
+			NET_SOCKET_SET_ERROR("getaddrinfo() failed: " + AddrInfo::getLastError());
 			return false;
 		}
-		return true;
+
+		bool useExisting = !skt.Closed();
+		bool triedAny = false;
+		int last_code = 0;
+
+		for (const addrinfo& ai : *addrs) {
+			if (ip_version != Ip::Auto && ai.ai_family != static_cast<ip_t>(ip_version))
+				continue;
+
+			triedAny = true;
+
+			if (useExisting) {
+				useExisting = false;
+				if (connect(skt.id(), ai.ai_addr,
+					static_cast<socklen_t>(ai.ai_addrlen)) == 0)
+					return true;
+				last_code = last_socket_error();
+				skt.Close();
+				continue;
+			}
+
+			Socket tmp{ socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+			if (tmp.id() == invalid_socket) {
+				last_code = last_socket_error();
+				continue;
+			}
+			if (connect(tmp.id(), ai.ai_addr,
+				static_cast<socklen_t>(ai.ai_addrlen)) == 0) {
+				skt = std::move(tmp);
+				return true;
+			}
+			last_code = last_socket_error();
+		}
+
+		if (!triedAny) {
+			NET_SOCKET_SET_ERROR("ConnectTo: no addrinfo candidate matched family");
+			return false;
+		}
+		NET_SOCKET_SET_ERROR("connect() failed with error code: " + std::to_string(last_code));
+		return false;
 	}
+
 
 	inline std::optional<msg_size> Client::recv_one(void* buf, msg_size len) {
 #		ifdef _WIN32

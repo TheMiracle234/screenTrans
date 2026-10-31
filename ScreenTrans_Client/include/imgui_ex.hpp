@@ -93,3 +93,51 @@ static inline void set(T& v, typename T::value_type val, std::memory_order order
 	mid___ = ex_fn(mid___); \
 	set(atomic_var, mid___); \
 } while (false)
+
+
+namespace ImGui {
+	inline void DockingSpace() {
+		ImGuiViewport* viewport = ImGui::GetMainViewport();
+		ImGui::SetNextWindowPos(viewport->WorkPos);
+		ImGui::SetNextWindowSize(viewport->WorkSize);
+		ImGui::SetNextWindowViewport(viewport->ID);
+
+		constexpr ImGuiWindowFlags dock_flags = ImGuiWindowFlags_NoDocking |
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoBringToFrontOnFocus |
+			ImGuiWindowFlags_NoNavFocus |
+			ImGuiWindowFlags_NoBackground;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::Begin("MainDockSpace", nullptr, dock_flags);
+		ImGui::PopStyleVar(3);
+
+		ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
+		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+	}
+
+	inline void PushU64(uint64_t id) {
+		ImGui::PushID(static_cast<int>(id & 0xFFFFFFFFu));
+		ImGui::PushID(static_cast<int>((id >> 32) & 0xFFFFFFFFu));
+	}
+
+	inline void PopU64() {
+		ImGui::PopID();
+		ImGui::PopID();
+	}
+
+	struct PushU64Guard {
+		PushU64Guard(uint64_t id) { PushU64(id); }
+		~PushU64Guard() { PopU64(); }
+	};
+
+	struct PushIdGuard {
+		PushIdGuard(int id) { ImGui::PushID(id); }
+		~PushIdGuard() { ImGui::PopID(); }
+	};
+}

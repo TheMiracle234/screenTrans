@@ -24,10 +24,11 @@
     <ClCompile Include="src\H264Encoder.cpp" />
     <ClCompile Include="src\ClientApp.cpp" />
     <ClCompile Include="src\Mp4Recorder.cpp" />
+    <ClCompile Include="src\PageShow.inl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ClientApp.hpp" />
-    <ClInclude Include="include\atomic_imgui.hpp" />
+    <ClInclude Include="include\imgui_ex.hpp" />
     <ClInclude Include="include\CameraCapture.hpp" />
     <ClInclude Include="include\compile_time.hpp" />
     <ClInclude Include="include\H264Decoder.h" />
@@ -119,7 +120,7 @@
       <PreprocessorDefinitions>GLEW_STATIC;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>

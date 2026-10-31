@@ -6,6 +6,7 @@
 #ifdef _WIN32
 #	define _WINSOCK_DEPRECATED_NO_WARNINGS
 #	include <WinSock2.h>
+#	include <ws2tcpip.h>   // getaddrinfo / freeaddrinfo / gai_strerror
 #	pragma comment(lib, "ws2_32.lib")
 #else
 #	include <sys/types.h>
@@ -30,11 +31,6 @@ namespace net {
 	constexpr socket_t invalid_socket = INVALID_SOCKET;
 	inline constexpr int socket_error = SOCKET_ERROR;
 	inline int last_socket_error() { return WSAGetLastError(); }
-#	define WSAGetLastError static_assert(false);
-#	define SOCKADDR_IN static_assert(false);
-#	define SOCKADDR static_assert(false);
-#	undef INVALID_SOCKET
-#	undef SOCKET_ERROR
 #else
 	using socket_t = int;
 	inline constexpr socket_t invalid_socket = -1;
@@ -49,6 +45,7 @@ namespace net {
 		enum class Ip : ip_t {
 			v4 = AF_INET,
 			v6 = AF_INET6,
+			Auto = AF_UNSPEC,
 		};
 	}
 

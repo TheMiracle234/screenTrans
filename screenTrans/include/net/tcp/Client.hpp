@@ -74,6 +74,9 @@ namespace net {
             friend class Server;
         private:
             Socket skt;
+#ifndef NDEBUG
+            Ip family_ = Ip::Auto;   // 仅用于 ConnectTo 与构造 family 的一致性断言
+#endif
 
             bool Init(Ip ip);
             Client(socket_t skt);
@@ -84,8 +87,20 @@ namespace net {
         public:
             Client(Ip ip_version);
             Client(const Client& other) = delete;
-            Client(Client&& other) noexcept : skt(std::move(other.skt)) {}
-            void operator=(Client&& other) noexcept { skt = std::move(other.skt); }
+            Client(Client&& other) noexcept : skt(std::move(other.skt))
+#ifndef NDEBUG
+                , family_(other.family_)
+#endif
+            { }
+
+            void operator=(Client&& other) noexcept
+            {
+                skt = std::move(other.skt);
+#ifndef NDEBUG
+                family_ = other.family_;
+#endif
+            }
+
             bool ConnectTo(Ip ip_version, const char* ip, uint16_t port);
             socket_t Id() { return skt.id(); }
 

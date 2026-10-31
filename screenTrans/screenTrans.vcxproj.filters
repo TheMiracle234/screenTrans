@@ -1406,10 +1406,7 @@
     <ClInclude Include="include\captions.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\env_value.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="include\asr_trace.hpp">
+    <ClInclude Include="include\net\AddrInfo.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

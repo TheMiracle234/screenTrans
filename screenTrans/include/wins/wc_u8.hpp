@@ -2,7 +2,30 @@
 #include <windows.h>
 #include <string>
 namespace wins {
-    inline std::string WideToUtf8(const std::wstring_view w) {
+    inline void WideToUtf8(std::string& out, const std::wstring_view w) {
+        if (w.empty()) {
+            out.resize(0);
+        }
+
+        int size = WideCharToMultiByte(
+            CP_UTF8, 0,
+            w.data(), (int)w.size(),
+            nullptr, 0,
+            nullptr, nullptr
+        );
+
+        out.resize(size, '\0');
+        //std::string s(size, '\0');
+
+        WideCharToMultiByte(
+            CP_UTF8, 0,
+            w.data(), (int)w.size(),
+            out.data(), size,
+            nullptr, nullptr
+        );
+    }
+
+    [[nodiscard]] inline std::string WideToUtf8(const std::wstring_view w) {
         if (w.empty()) return {};
 
         int size = WideCharToMultiByte(
@@ -24,7 +47,7 @@ namespace wins {
         return s;
     }
 
-    inline std::wstring Utf8ToWide(const std::string_view s) {
+    [[nodiscard]] inline std::wstring Utf8ToWide(const std::string_view s) {
         if (s.empty()) return {};
 
         int size = MultiByteToWideChar(
