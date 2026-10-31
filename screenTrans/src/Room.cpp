@@ -72,10 +72,13 @@ void Room::threadSendMsg(User* clientMtx) {
 		user::id_t choose_user{};
 		bool share_video{};
 		int32_t pk_size{};
+		int32_t video_w;
+		int32_t video_h;
 		std::vector<std::vector<uint8_t>> packets{};
-
 		bool share_camera{};
 		int32_t cam_pk_size{};
+		int32_t cam_w;
+		int32_t cam_h;
 		std::vector<std::vector<uint8_t>> cam_packets{};
 
 		void restore() {
@@ -112,6 +115,8 @@ void Room::threadSendMsg(User* clientMtx) {
 		client->ReceiveBy(rv.choose_user);
 		client->ReceiveBy(rv.share_video);
 		if (rv.share_video) {
+			client->ReceiveBy(rv.video_w);
+			client->ReceiveBy(rv.video_h);
 			if (client->ReceiveBy(rv.pk_size)) [[likely]] {
 				packet_count = rv.pk_size;
 				rv.packets.resize(std::max(rv.packets.size(), (size_t)packet_count));
@@ -123,6 +128,8 @@ void Room::threadSendMsg(User* clientMtx) {
 
 		client->ReceiveBy(rv.share_camera);
 		if (rv.share_camera) {
+			client->ReceiveBy(rv.cam_w);
+			client->ReceiveBy(rv.cam_h);
 			if (client->ReceiveBy(rv.cam_pk_size)) {
 				rv.cam_packets.resize(std::max(rv.cam_packets.size(), (size_t)rv.cam_pk_size));
 				for (int32_t i = 0; i < rv.cam_pk_size; i++) {
@@ -187,19 +194,11 @@ void Room::threadSendMsg(User* clientMtx) {
 				if (rv.is_host_from_client) {
 					if (is_host_from_server) [[likely]] {
 						c->Send(rv.wanna_kick_off);
-						//c->Send(rv.mute_all_once);
-						//c->Send(rv.mute_all_keep);
 					}
 					else {
 						c->Send(user::invalid_id);
-						//c->Send(false);
-						//c->Send(false);
 					}
 				}
-				//c->Send(rv.share_audio);
-				//if (rv.share_audio) {
-				//	c->Send(rv.audio_frames);
-				//}
 				c->Send(rv.has_words_msg);
 				if (rv.has_words_msg) [[unlikely]] {
 					c->Send(rv.words_msg_target);
@@ -213,6 +212,8 @@ void Room::threadSendMsg(User* clientMtx) {
 				}
 				if (rv.share_video) {
 					c->Send(rv.pk_size);
+					c->Send(rv.video_w);
+					c->Send(rv.video_h);
 					for (int i = 0;i < packet_count;++i) {
 						c->Send(rv.packets[i]);
 					}
@@ -221,6 +222,8 @@ void Room::threadSendMsg(User* clientMtx) {
 				c->Send(rv.share_camera);
 				if (rv.share_camera) {
 					c->Send(rv.cam_pk_size);
+					c->Send(rv.cam_w);
+					c->Send(rv.cam_h);
 					for (int i = 0; i < rv.cam_pk_size; i++) {
 						c->Send(rv.cam_packets[i]);
 					}

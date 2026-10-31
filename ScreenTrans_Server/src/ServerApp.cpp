@@ -251,7 +251,7 @@ void ServerApp::run() {
 	uint16_t port;
 	print("input port to be set: ");
 	std::cin >> port;
-	net::tcp::Server server( net::tcp::Ip::v4, port);
+	net::tcp::Server server( net::tcp::Ip::Auto, port);
 	server.Listen();
 	println("waiting for the first client...");
 

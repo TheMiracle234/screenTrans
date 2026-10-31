@@ -111,13 +111,13 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ASR/third/whisper.cpp/ggml_include;src;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ASR/third/whisper.cpp/whisper_include;$(SolutionDir)/ASR/third/whisper.cpp/ggml_include;src;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)\ASR\third\whisper.cpp\whisper_debug;$(SolutionDir)\ASR\third\whisper.cpp\ggml_debug;third/ccap;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib;$(SolutionDir)x64\Debug</AdditionalLibraryDirectories>
-      <AdditionalDependencies>whisper.lib;ggml-base.lib;ggml-cpu.lib;ggml.lib;ffmpeg_x264.lib;freetype.lib;screenTrans.lib;opengl32.lib;glfw3.lib;glew32s.lib;dxguid.lib;d3d12.lib;dxgi.lib;D3DCompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\ASR\third\whisper.cpp\whisper_debug;$(SolutionDir)\ASR\third\whisper.cpp\ggml_debug;third/ccap;$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)/screenTrans/thirdparty/lib;$(SolutionDir)x64\Debug;$(SolutionDir)x64\Debug\plugin</AdditionalLibraryDirectories>
+      <AdditionalDependencies>plugin_ASR.lib;whisper.lib;ggml-base.lib;ggml-cpu.lib;ggml.lib;ffmpeg_x264.lib;freetype.lib;screenTrans.lib;opengl32.lib;glfw3.lib;glew32s.lib;dxguid.lib;d3d12.lib;dxgi.lib;D3DCompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -132,7 +132,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ASR/third/whisper.cpp/ggml_include;src;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ASR/third/whisper.cpp/whisper_include;$(SolutionDir)/ASR/third/whisper.cpp/ggml_include;src;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/thirdparty/include/ffmpeg_x264;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

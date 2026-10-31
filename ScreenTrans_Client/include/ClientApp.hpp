@@ -6,7 +6,7 @@
 
 #define USE_IMGUI 1
 #define USE_IMGUI_VIEWPORT 1
-
+#define LISTEN_MYSELF 1
 #define USE_ASR 0
 
 #if	USE_IMGUI
@@ -32,6 +32,7 @@
 #include <Room.h>
 #include <util/util.hpp>
 #include <util/Timer.hpp>
+#include <imgui_ex.hpp>
 
 #include <plugin/Loader.hpp>
 #include <plugin/Asr.hpp>
@@ -139,29 +140,42 @@ template <typename CB>
 
 class ClientApp {
 private:
+	bool cam_ok{ false };
+	std::counting_semaphore<> cam_sync0{ 0 };
+	std::counting_semaphore<> cam_sync1{ 0 };
+	int m_cam_w;
+	int m_cam_h;
 	CameraCapture m_cameraCapture;
 	std::mutex mtx_camera;
-	void EnableCamera(bool enable);
+	template<bool enable>
+	void EnableCamera();
 	void CameraCaptureThread();
 	void CameraCaptureEncode();
 	void CameraDecode();
 	static inline constexpr size_t send_camera_packets_count = 4;
 	static inline constexpr size_t recv_camera_packets_count = 4;
 	static inline constexpr size_t total_capture_frames_count = 4;
-
+	std::atomic<int32_t> rv_cam_orig_w{ 1000 };
+	std::atomic<int32_t> rv_cam_orig_h{ 800 };
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_camera_packets{ send_camera_packets_count };
-
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_camera_packets{ recv_camera_packets_count };
-
-	boost::lockfree::spsc_queue<ST::DecodedFrame> total_capture_frames{ total_capture_frames_count };
-
+	boost::lockfree::spsc_queue<ST::DecodedFrame> total_capture_frames{ total_capture_frames_count }; // to be encoded
+	boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ 4 }; // got from others
 
 
 private:
 	static std::unique_ptr<gl::Window> makeWindow();
 private:
 	template<bool lock_users>
-	[[nodiscard]] bool isHost();
+	[[nodiscard]] bool isHost() {
+		if constexpr (lock_users) {
+			std::lock_guard lock(mtx_users);
+			return get(users[get(logger.id)].is_host);
+		}
+		else {
+			return get(users[get(logger.id)].is_host);
+		}
+	}
 	[[nodiscard]] bool clientClosed();
 private:
 	/* recv: signals, id (, name, is_host_from_server, is_host_from_client(, wanna_kick_off), audio_frames(, pk_size, pk[n])) */
@@ -174,7 +188,6 @@ private:
 	void ScreenDecode();
 	void videoRecord();
 	void audioMix();
-	void asrRecv();
 private:
 	void initVideoRecord();
 private:
@@ -237,7 +250,7 @@ private:
 		std::atomic<bool> m_ended{ false };
 		End m_showEnd{ End::Default };
 	public:
-		std::counting_semaphore<> wait_threads{0};
+		//std::counting_semaphore<> wait_threads{0};
 	}p_show;
 	Page Show();
 	void initBeforeShow();
@@ -281,13 +294,14 @@ private:
 	std::mutex mtx_speechWords;
 
 	static inline constexpr size_t send_screen_packets_count = 4;
-	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_screen_packets{ send_screen_packets_count };
 	static inline constexpr size_t recv_screen_packets_count = 4;
+	std::atomic<int32_t> rv_sc_orig_w{ 1920 };
+	std::atomic<int32_t> rv_sc_orig_h{ 1080 };
+	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_screen_packets{ send_screen_packets_count };
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_screen_packets{ recv_screen_packets_count };
 	boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>> total_video_frames_v1{ 4 };
 
-	boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ 4 };
-	boost::lockfree::spsc_queue<ST::DecodedFrame> local_camera_frames{ 4 };
+	//boost::lockfree::spsc_queue<ST::DecodedFrame> local_camera_frames{ 4 };
 	//std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
 	struct User {
@@ -306,7 +320,6 @@ private:
 		} total_words_msg;
 	};
 	std::unordered_map < user::id_t, User > users; // init with self
-	std::vector<float> audioFramesLong{};
 	std::string speechWords;
 
 
@@ -346,6 +359,14 @@ private:
 				ALIGN(int32_t) height{};
 			} encode;
 		} video;
+		struct {
+			struct {
+				ALIGN(int32_t) fps {};
+				ALIGN(int32_t) bitrate {};
+				ALIGN(int32_t) width {};
+				ALIGN(int32_t) height {};
+			} encode;
+		} camera;
 		struct RoomUser {
 			struct {
 				ALIGN(uint32_t) set_room_passwd{};
@@ -374,7 +395,6 @@ private:
 		struct {
 			std::atomic<boost::float64_t> fps = 64;
 			struct {
-				//std::mutex mtx;
 				std::atomic<int> fps = 30;
 				std::atomic<int> bitrate = 4'000'000;
 				std::atomic<int> width{0};
@@ -382,6 +402,16 @@ private:
 				std::counting_semaphore<> wait_wh{0};
 			} encode;
 		} video;
+		struct {
+			struct {
+				//std::mutex mtx;
+				std::atomic<int> fps = 30;
+				std::atomic<int> bitrate = 4'000'000;
+				std::atomic<int> width{ 0 };
+				std::atomic<int> height{ 0 };
+				std::counting_semaphore<> wait_wh{ 0 };
+			} encode;
+		} camera;
 		struct RoomUser{
 			std::atomic<bool> is_kicked_off{ false };
 			std::atomic<bool> is_muted_keep{ false };
@@ -399,15 +429,31 @@ private:
 	} ui;
 
 	void* any_usage{nullptr}; // now only for renderFunc in draw function
-	
+
 	struct {
 		struct {
 			plugin::Loader loader{};
-			plugin::fn::AsrInit init{};
-			plugin::fn::AsrTranscribe transcribe{};
-			plugin::fn::AsrFree free{};
+			plugin::asr::fn::AsrOpen open{};
+			plugin::asr::fn::AsrPush push{};
+			plugin::asr::fn::AsrPoll poll{};
+			plugin::asr::fn::AsrFinish finish{};
+			plugin::asr::fn::AsrReset reset{};
+			plugin::asr::fn::AsrClose close{};
+			std::mutex mtx;
+			plugin_asr_stream* stream = nullptr;
+			plugin::asr::AsrUi ui;
+
+			std::string dir{};
 		} asr;
 	} plug;
+
+	template<bool mtx>
+	bool asrOn();
+	void asrLoad();
+	void asrDownload();
+	template<bool mtx>
+	void asrPushData(std::vector<float>& audioFrames);
+
 public:
 	ClientApp();
 	~ClientApp();
