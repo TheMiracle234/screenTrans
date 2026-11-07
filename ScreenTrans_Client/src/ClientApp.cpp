@@ -1320,6 +1320,7 @@ void ClientApp::asrLoad() {
 
 	if (!got_funcs) {
 		plug.asr.loader.free();
+
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
 		plug.asr.ui.status = "ASR Load Failed: Missing functions";
 		return;
@@ -1389,6 +1390,147 @@ void ClientApp::asrPushData(std::vector<float>& audioFrames) {
 			plug.asr.ui.status = "Push INVALID (audio data rejected)";
 		}
 	}
+}
+
+template<bool mtx>
+bool ClientApp::translatorOn(){
+	if constexpr (mtx) {
+		std::lock_guard lock{ plug.translator.mtx };
+		return static_cast<bool>(plug.translator.Registor) && static_cast<bool>(plug.translator.close);
+	}
+	else {
+		return static_cast<bool>(plug.translator.Registor) && static_cast<bool>(plug.translator.close);
+	}
+}
+
+void ClientApp::translatorLoad(){
+	std::lock_guard lock{ plug.translator.mtx };
+	if (translatorOn<false>()) { return; }
+	bool ok = plug.translator.loader.load((plug.translator.dir + "/plugin_Translator.dll").c_str());
+
+	auto clearup = [this]() {
+		plug.translator.Registor = nullptr;
+		plug.translator.unload = nullptr;
+		plug.translator.translate = nullptr;
+		plug.translator.close = nullptr;
+		plug.translator.loader.free();
+	};
+
+	if (!ok) {
+		{
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			plug.translator.error = "load error";
+
+			std::cerr << "LoadLibrary failed, GetLastError = " << GetLastError() << "\n";
+			std::cerr << "  path = " << std::filesystem::absolute(plug.translator.dir + "/plugin_Translator.dll") << "\n";
+		}
+		clearup();
+		return;
+	}
+	ok =
+	plug.translator.loader.get(plug.translator.Registor, plugin::translator::name::Register) &&
+	plug.translator.loader.get(plug.translator.unload, plugin::translator::name::unload) &&
+	plug.translator.loader.get(plug.translator.translate, plugin::translator::name::translate) && 
+	plug.translator.loader.get(plug.translator.close, plugin::translator::name::close);
+	if (!ok) {
+		{
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			plug.translator.error = "get func error";
+		}
+		clearup();
+		return;
+	}
+	plug.translator.error.clear();
+
+	translatorLoadDirections();
+	plug.translator.direction = plug.translator.directions.back();
+	for (const auto& d : plug.translator.directions) {
+		char* error;
+		if(!plug.translator.Registor(d.src.c_str(), d.tar.c_str(), d.model_dir.c_str(), &error)) {
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			translatorSetError(error);
+		}
+	}
+}
+
+void ClientApp::translatorDownload() {
+	std::lock_guard lock{ plug.translator.mtx }; // 如果卡在这，说明后台没释放
+	if (plug.translator.unload) {
+		char* error;
+		plug.translator.unload(plug.translator.direction.src.c_str(), plug.translator.direction.tar.c_str(), &error);
+	}
+	if (plug.translator.close) {
+		plug.translator.close();
+	}
+	plug.translator.Registor = nullptr;
+	plug.translator.translate = nullptr;
+	plug.translator.close = nullptr;
+	plug.translator.loader.free(); // 如果卡在这，说明 DLL 卸载卡住了
+	plug.translator.directions.reserve(0);
+}
+
+void ClientApp::translatorLoadDirections() {
+	plug.translator.directions.clear();
+	if (plug.translator.dir.empty()) {
+		return;
+	}
+
+	// <plug.translator.dir>/models/tables.inl
+	std::filesystem::path modelsDir = std::filesystem::path(plug.translator.dir) / "models";
+	std::filesystem::path tablesPath = modelsDir / "tables.inl";
+
+	std::ifstream file(tablesPath);
+	if (!file.is_open()) {
+		std::lock_guard lock{ plug.translator.mtx_ui };
+		translatorSetError("Failed to open " + tablesPath.string());
+		return;
+	}
+
+	std::string line;
+	while (std::getline(file, line)) {
+		if (line.empty()) continue;
+
+		std::istringstream iss(line);
+		TranslateDirection dir;
+		if (iss >> dir.src >> dir.tar >> dir.model_dir) {
+			dir.model_dir = (modelsDir / dir.model_dir).generic_string();
+			plug.translator.directions.push_back(std::move(dir));
+		}
+	}
+}
+
+void ClientApp::translateThread() {
+	char* out;
+	char* error;
+	std::string toBeTranslated;
+	TranslateDirection direction;
+	while (!p_show.ended() && !clientClosed() && translatorOn<true>()) {
+		std::this_thread::sleep_for(50ms);
+		std::lock_guard lock{ plug.translator.mtx };
+		if (plug.translator.translate) {
+			{
+				std::lock_guard lock{ plug.translator.mtx_ui };
+				toBeTranslated = plug.translator.toBeTranslated;
+				direction = plug.translator.direction;
+			}
+			if (!plug.translator.translate(toBeTranslated.c_str(), direction.src.c_str(), direction.tar.c_str(), &out, &error)) {
+				std::lock_guard lock{ plug.translator.mtx_ui };
+				translatorSetError(error);
+			}
+			else {
+				std::lock_guard lock{ plug.translator.mtx_ui };
+				plug.translator.result = out;
+			}
+		}
+		else {
+			{
+				std::lock_guard lock{ plug.translator.mtx_ui };
+				translatorSetError("plug.translator.translate is nullptr");
+			}
+		}
+	}
+
+	println("translate thread end");
 }
 
 int main() {

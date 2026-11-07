@@ -1,6 +1,6 @@
 ﻿#ifndef PLUGIN_ASR_H
 #define PLUGIN_ASR_H
-#include <stdint.h>
+
 #ifdef _WIN32
 #define PLUGIN_ASR_CALL __cdecl
 #if defined(PLUGIN_ASR_EXPORTS)
@@ -12,9 +12,13 @@
 #define PLUGIN_ASR_CALL
 #define PLUGIN_ASR_API __attribute__((visibility("default")))
 #endif
+
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 #define PLUGIN_ASR_ABI_VERSION 1
 #define PLUGIN_ASR_SAMPLE_RATE 16000
 #define PLUGIN_ASR_MAX_SAMPLES 32000
