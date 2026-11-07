@@ -81,11 +81,11 @@ using std::literals::chrono_literals::operator""s;
 
 #include <Mp4Recorder.hpp>
 
-#ifndef NDEBUG
+//#ifndef NDEBUG
 #	define print(x) std::cout<< x
-#else
-#	define print(x)
-#endif
+//#else
+//#	define print(x)
+//#endif
 
 #define println(x) print(x << "\n")
 #define PL println(__LINE__)
@@ -497,7 +497,16 @@ private:
 	void translatorLoad();
 	void translatorDownload();
 	void translatorLoadDirections();
-	void translatorSetError(std::string_view error) { if (plug.translator.error.empty()) { plug.translator.error = error; } }
+	template<bool mtx>
+	void translatorSetError(std::string_view error) { 
+		if constexpr (mtx) {
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			if (plug.translator.error.empty()) { plug.translator.error = error; }
+		}
+		else {
+			if (plug.translator.error.empty()) { plug.translator.error = error; }
+		}
+	}
 
 	void translateThread();
 

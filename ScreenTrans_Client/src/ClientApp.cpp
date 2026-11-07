@@ -1409,10 +1409,10 @@ void ClientApp::translatorLoad(){
 	bool ok = plug.translator.loader.load((plug.translator.dir + "/plugin_Translator.dll").c_str());
 
 	auto clearup = [this]() {
-		plug.translator.Registor = nullptr;
-		plug.translator.unload = nullptr;
-		plug.translator.translate = nullptr;
 		plug.translator.close = nullptr;
+		plug.translator.translate = nullptr;
+		plug.translator.unload = nullptr;
+		plug.translator.Registor = nullptr;
 		plug.translator.loader.free();
 	};
 
@@ -1443,12 +1443,13 @@ void ClientApp::translatorLoad(){
 	plug.translator.error.clear();
 
 	translatorLoadDirections();
-	plug.translator.direction = plug.translator.directions.back();
+	if (!plug.translator.directions.empty()) {
+		plug.translator.direction = plug.translator.directions.front();
+	}
 	for (const auto& d : plug.translator.directions) {
-		char* error;
+		char* error{};
 		if(!plug.translator.Registor(d.src.c_str(), d.tar.c_str(), d.model_dir.c_str(), &error)) {
-			std::lock_guard lock{ plug.translator.mtx_ui };
-			translatorSetError(error);
+			translatorSetError<true>(error);
 		}
 	}
 }
@@ -1456,17 +1457,19 @@ void ClientApp::translatorLoad(){
 void ClientApp::translatorDownload() {
 	std::lock_guard lock{ plug.translator.mtx }; // 如果卡在这，说明后台没释放
 	if (plug.translator.unload) {
-		char* error;
+		char* error{};
 		plug.translator.unload(plug.translator.direction.src.c_str(), plug.translator.direction.tar.c_str(), &error);
 	}
 	if (plug.translator.close) {
 		plug.translator.close();
 	}
-	plug.translator.Registor = nullptr;
-	plug.translator.translate = nullptr;
 	plug.translator.close = nullptr;
+	plug.translator.translate = nullptr;
+	plug.translator.unload = nullptr;
+	plug.translator.Registor = nullptr;
 	plug.translator.loader.free(); // 如果卡在这，说明 DLL 卸载卡住了
-	plug.translator.directions.reserve(0);
+	plug.translator.directions.clear();
+	plug.translator.directions.shrink_to_fit();
 }
 
 void ClientApp::translatorLoadDirections() {
@@ -1481,8 +1484,7 @@ void ClientApp::translatorLoadDirections() {
 
 	std::ifstream file(tablesPath);
 	if (!file.is_open()) {
-		std::lock_guard lock{ plug.translator.mtx_ui };
-		translatorSetError("Failed to open " + tablesPath.string());
+		translatorSetError<true>("Failed to open " + tablesPath.string());
 		return;
 	}
 
@@ -1500,8 +1502,8 @@ void ClientApp::translatorLoadDirections() {
 }
 
 void ClientApp::translateThread() {
-	char* out;
-	char* error;
+	char* out{};
+	char* error{};
 	std::string toBeTranslated;
 	TranslateDirection direction;
 	while (!p_show.ended() && !clientClosed() && translatorOn<true>()) {
@@ -1514,8 +1516,7 @@ void ClientApp::translateThread() {
 				direction = plug.translator.direction;
 			}
 			if (!plug.translator.translate(toBeTranslated.c_str(), direction.src.c_str(), direction.tar.c_str(), &out, &error)) {
-				std::lock_guard lock{ plug.translator.mtx_ui };
-				translatorSetError(error);
+				translatorSetError<true>(error);
 			}
 			else {
 				std::lock_guard lock{ plug.translator.mtx_ui };
@@ -1523,10 +1524,7 @@ void ClientApp::translateThread() {
 			}
 		}
 		else {
-			{
-				std::lock_guard lock{ plug.translator.mtx_ui };
-				translatorSetError("plug.translator.translate is nullptr");
-			}
+			translatorSetError<true>("plug.translator.translate is nullptr");
 		}
 	}
 

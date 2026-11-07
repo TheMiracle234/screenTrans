@@ -33,6 +33,11 @@ namespace plugin {
             return h != nullptr;
         }
 
+        void detach() {
+            assert(on());
+            h = nullptr;
+        }
+
         template<typename Fn>
         bool get(Fn& out, const char* func) {
             static_assert(std::is_pointer_v<Fn>, "Fn must be a function pointer");
@@ -51,8 +56,8 @@ namespace plugin {
 
         ~Loader() { free(); }
 
-    private:
         bool on() const { return h != nullptr; }
+    private:
         HMODULE h{};
     };
 }

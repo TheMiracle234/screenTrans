@@ -518,7 +518,8 @@ inline ClientApp::Page ClientApp::Show() {
 										if (!is_selected) [[likely]] {
 											char* error{};
 											if (plug.translator.unload) [[likely]] {
-												std::lock_guard lock{ plug.translator.mtx_ui };
+												std::lock_guard lock0{ plug.translator.mtx };
+												std::lock_guard lock1{ plug.translator.mtx_ui };
 												plug.translator.unload(plug.translator.direction.src.c_str(), plug.translator.direction.tar.c_str(), &error);
 											}
 											{
@@ -526,7 +527,7 @@ inline ClientApp::Page ClientApp::Show() {
 												plug.translator.direction = dir;
 											}
 											if (error) {
-												translatorSetError(error);
+												translatorSetError<true>(error);
 											}
 										}
 									}
@@ -543,9 +544,7 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::PushTextWrapPos(0.0f);
 
 							if (!asrOn<true>()) {
-								if (plug.translator.error.empty()) {
-									plug.translator.error = "load asr before load translator";
-								}
+								translatorSetError<true>("load asr before load translator");
 							}
 
 							{
@@ -555,11 +554,14 @@ inline ClientApp::Page ClientApp::Show() {
 								ImGui::PopStyleColor();
 							}
 
-							if (!plug.translator.error.empty()) {
-								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
-								ImGui::TextUnformatted(plug.translator.error.c_str());
-								plug.translator.error.clear();
-								ImGui::PopStyleColor();
+							{
+								std::lock_guard lock{ plug.translator.mtx_ui };
+								if (!plug.translator.error.empty()) {
+									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+										ImGui::TextUnformatted(plug.translator.error.c_str());
+										plug.translator.error.clear();
+									ImGui::PopStyleColor();
+								}
 							}
 
 							ImGui::PopTextWrapPos();
@@ -750,14 +752,19 @@ inline ClientApp::Page ClientApp::Show() {
 		client_audio.Close();
 
 	}
+	println("asr downloading");
 	asrDownload();
-	translatorDownload();
+	println("asr downloaded");
 
+	println("translate downloading");
+	translatorDownload();
+	println("translate downloaded");
+
+	println("show ended");
 	if (windowClosed) {
 		return Page::Tmp;
 	}
 
-	println("show ended");
 	switch (p_show.showEnd()) {
 	case ShowPara::End::clientClosed:
 		return makeTmp("clientClosed", "your tcp socket closed in the middle.", Page::connectToServer);
