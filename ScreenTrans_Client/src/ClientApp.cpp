@@ -946,7 +946,7 @@ void ClientApp::audioMix()
 		{
 			std::lock_guard lock(plug.asr.mtx);
 			if (asrOn<false>()) {
-				asrPushData<false>(mixBuf);
+				asrPushData<false>(mixBuf.data(), realSamples);
 			}
 		}
 	}
@@ -1302,6 +1302,16 @@ void ClientApp::asrLoad() {
 	// 防止上一次异常残留未释放
 	plug.asr.loader.free();
 
+	auto clearup = [this]() {
+		plug.asr.stream = nullptr;
+		plug.asr.open = nullptr;
+		plug.asr.push = nullptr;
+		plug.asr.poll = nullptr;
+		plug.asr.finish = nullptr;
+		plug.asr.reset = nullptr;
+		plug.asr.close = nullptr;
+	};
+
 	// 1. 加载 DLL
 	if (!plug.asr.loader.load((plug.asr.dir +  "/plugin_ASR.dll").c_str())) {
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
@@ -1319,6 +1329,7 @@ void ClientApp::asrLoad() {
 		plug.asr.loader.get(plug.asr.close, plugin::asr::name::asrClose);
 
 	if (!got_funcs) {
+		clearup();
 		plug.asr.loader.free();
 
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
@@ -1330,7 +1341,7 @@ void ClientApp::asrLoad() {
 	char error[512] = {};
 	int32_t rc = plug.asr.open((plug.asr.dir + "/model").c_str(), 0, &plug.asr.stream, error, sizeof(error));
 	if (rc != PLUGIN_ASR_OK || !plug.asr.stream) {
-		plug.asr.stream = nullptr;
+		clearup();
 		plug.asr.loader.free(); // 失败必须卸载
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
 		plug.asr.ui.status = "ASR open failed: " + std::string(error);
@@ -1378,16 +1389,19 @@ void ClientApp::asrDownload() {
 }
 
 template<bool mtx>
-void ClientApp::asrPushData(std::vector<float>& audioFrames) {
+void ClientApp::asrPushData(const float* audioFrames, size_t count) {
 	static_assert(!mtx); // on purpose
 	//std::lock_guard lk(plug.asr.mtx);
 	if (plug.asr.stream && plug.asr.push) {
-		int32_t r = plug.asr.push(plug.asr.stream, audioFrames.data(),
-			static_cast<uint32_t>(audioFrames.size()));
+		int32_t r = plug.asr.push(plug.asr.stream, audioFrames, static_cast<uint32_t>(count));
 
 		if (r == PLUGIN_ASR_INVALID) {
 			std::lock_guard ui_lk(plug.asr.ui.mtx);
 			plug.asr.ui.status = "Push INVALID (audio data rejected)";
+		}
+		else {
+			std::lock_guard ui_lk(plug.asr.ui.mtx);
+			plug.asr.ui.status.clear();
 		}
 	}
 }

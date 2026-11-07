@@ -490,7 +490,17 @@ private:
 	void asrLoad();
 	void asrDownload();
 	template<bool mtx>
-	void asrPushData(std::vector<float>& audioFrames);
+	void asrPushData(const float* audioFrames, size_t count);
+	//template<bool mtx>
+	//void asrSetStatus(std::string_view status) {
+	//	if constexpr (mtx) {
+	//		std::lock_guard lock{ plug.asr.ui.mtx };
+	//		if (plug.asr.ui.status.empty()) { plug.asr.ui.status = status; }
+	//	}
+	//	else {
+	//		if (plug.asr.ui.status.empty()) { plug.asr.ui.status = status; }
+	//	}
+	//}
 
 	template<bool mtx>
 	bool translatorOn();

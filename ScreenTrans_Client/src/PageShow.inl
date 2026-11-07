@@ -470,7 +470,7 @@ inline ClientApp::Page ClientApp::Show() {
 							{
 								std::lock_guard lk(plug.asr.mtx);
 								if (plug.asr.stream && plug.asr.poll) {
-									plugin::asr::drain_events(plug.asr.stream, plug.asr.poll, plug.asr.ui);
+									plugin::asr::drain_events(plug.asr.stream, plug.asr.poll, plug.asr.ui); // locked inside
 								}
 								std::lock_guard ui_lk(plug.asr.ui.mtx);
 								if (!plug.asr.ui.history.empty()) {
@@ -486,6 +486,7 @@ inline ClientApp::Page ClientApp::Show() {
 									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
 									ImGui::TextUnformatted(plug.asr.ui.status.c_str());
 									ImGui::PopStyleColor();
+									plug.asr.ui.status = "Asr running normally";
 								}
 							}
 							{
