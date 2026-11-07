@@ -7,7 +7,6 @@
 #define USE_IMGUI 1
 #define USE_IMGUI_VIEWPORT 1
 #define LISTEN_MYSELF 1
-#define USE_ASR 0
 
 #if	USE_IMGUI
 #	include "imgui.h"
@@ -36,6 +35,7 @@
 
 #include <plugin/Loader.hpp>
 #include <plugin/Asr.hpp>
+#include <plugin/translator.hpp>
 
 #include <iostream>
 #include <thread>
@@ -49,6 +49,11 @@
 #include <chrono>
 #include <semaphore>
 #include <format>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 using std::literals::chrono_literals::operator""ms;
 using std::literals::chrono_literals::operator""s;
@@ -430,6 +435,20 @@ private:
 
 	void* any_usage{nullptr}; // now only for renderFunc in draw function
 
+	struct TranslateDirection {
+		std::string src{};
+		std::string tar{};
+		std::string model_dir{};
+		bool operator==(const TranslateDirection& that) const {
+			return this->src == that.src &&
+				this->tar == that.tar&&
+				this->model_dir == that.model_dir;
+		}
+		bool operator!=(const TranslateDirection& that) const {
+			return !(*this == that);
+		}
+	};
+
 	struct {
 		struct {
 			plugin::Loader loader{};
@@ -445,6 +464,25 @@ private:
 
 			std::string dir{};
 		} asr;
+
+		struct {
+			using Direction = ClientApp::TranslateDirection;
+
+			std::string dir{};
+			std::mutex mtx;
+			plugin::Loader loader{};
+			plugin::translator::fn::Register Registor{};
+			plugin::translator::fn::unload unload{};
+			plugin::translator::fn::Translate translate{};
+			plugin::translator::fn::Close close{};
+			std::vector<Direction> directions;
+			// ui
+			std::mutex mtx_ui;
+			std::string error;
+			std::string toBeTranslated;
+			std::string result;
+			Direction direction{};
+		} translator;
 	} plug;
 
 	template<bool mtx>
@@ -453,6 +491,15 @@ private:
 	void asrDownload();
 	template<bool mtx>
 	void asrPushData(std::vector<float>& audioFrames);
+
+	template<bool mtx>
+	bool translatorOn();
+	void translatorLoad();
+	void translatorDownload();
+	void translatorLoadDirections();
+	void translatorSetError(std::string_view error) { if (plug.translator.error.empty()) { plug.translator.error = error; } }
+
+	void translateThread();
 
 public:
 	ClientApp();

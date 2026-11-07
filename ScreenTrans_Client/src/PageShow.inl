@@ -5,12 +5,53 @@
 
 namespace fs = std::filesystem;
 
+struct loadPluginRes{
+	bool on;
+	bool changed;
+};
+
+static inline loadPluginRes loadPlugin(const char* plug_type_dir, std::string& plug_dir, ClientApp* app, bool on, void (ClientApp::*load)(), void (ClientApp::* download)()) {
+	const bool on0 = on;
+	bool on1 = on0;
+	loadPluginRes res;
+	if (ImGui::BeginCombo("plugins", plug_dir.c_str())) {
+		if (!on0) {
+			std::string dir;
+			for (const auto& entry : fs::directory_iterator(plug_type_dir)) {
+				wins::WideToUtf8(dir, entry.path().c_str());
+				if (ImGui::Selectable(dir.c_str())) {
+					plug_dir = std::move(dir);
+					break;
+				}
+			}
+		}
+		ImGui::EndCombo();
+	}
+	if (!plug_dir.empty()) {
+		ImGui::Checkbox("load", &on1);
+	}
+	if (on0 != on1) {
+		res.changed = true;
+		if (on1) {
+			(*app.*load)();
+		}
+		else {
+			(*app.*download)();
+		}
+	}
+	else {
+		res.changed = false;
+	}
+	res.on = on1;
+	return res;
+}
+
 inline ClientApp::Page ClientApp::Show() {
 	initBeforeShow();
 
-	constexpr size_t thread_count = 10;
+	//constexpr size_t thread_count = 10;
 
-	DEFER{ [this, thread_count]() {
+	DEFER{ [this]() {
 		//client.Close();
 		//client_audio.Close();
 		//for (size_t i = 0;i < thread_count;++i) {
@@ -18,6 +59,8 @@ inline ClientApp::Page ClientApp::Show() {
 		//}
 		restoreAfterShow();
 	} };
+
+	bool windowClosed = false;
 	{
 
 		std::jthread threads[] = {
@@ -33,7 +76,7 @@ inline ClientApp::Page ClientApp::Show() {
 			std::jthread{ &ClientApp::CameraDecode, this },
 		};
 
-		static_assert(thread_count == sizeof(threads) / sizeof(std::jthread));
+		//static_assert(thread_count == sizeof(threads) / sizeof(std::jthread));
 
 		ui.video.encode.wait_wh.acquire();
 		const int sc_width{ ui.video.encode.width };
@@ -57,8 +100,8 @@ inline ClientApp::Page ClientApp::Show() {
 		std::vector<uint8_t> camPixelBuffer;
 		ST::DecodedFrame cam_frame;
 
-		std::unique_ptr<std::jthread> record_thread;
-
+		std::unique_ptr<std::jthread> threadVideoRecord;
+		std::unique_ptr<std::jthread> threadTranslate;
 
 #if USE_IMGUI
 		const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
@@ -251,7 +294,7 @@ inline ClientApp::Page ClientApp::Show() {
 					ImGui::Checkbox("record_video", &record_video1);
 					if (record_video0 != record_video1 && record_video1) {
 						initVideoRecord();
-						record_thread = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
+						threadVideoRecord = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
 					}
 					set(ui.room_user.record_video, record_video1);
 
@@ -392,36 +435,38 @@ inline ClientApp::Page ClientApp::Show() {
 				if (ImGui::TreeNode("plugin")) {
 					if (ImGui::TreeNode("asr")) {
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
-						bool on0 = asrOn<false>();
-						bool on1 = on0;
-						if (ImGui::BeginCombo("plugins", plug.asr.dir.c_str())) {
-							if (!on0) {
-								std::string dir;
-								for (const auto& entry : fs::directory_iterator("plugin/asr")) {
-									wins::WideToUtf8(dir, entry.path().c_str());
-									if (ImGui::Selectable(dir.c_str())) {
-										plug.asr.dir = std::move(dir);
-										break;
-									}
-								}
-							}
-							ImGui::EndCombo();
-						}
-						if (!plug.asr.dir.empty()) {
-							ImGui::Checkbox("load", &on1);
-						}
-						if (on0 != on1) {
-							if (on1) {
-								asrLoad();
-							}
-							else {
-								asrDownload();
-							}
-						}
-						if (on1) {
-							ImGui::BeginChild("##speech", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
+						//bool on0 = asrOn<false>();
+						//bool on1 = on0;
+						//if (ImGui::BeginCombo("plugins", plug.asr.dir.c_str())) {
+						//	if (!on0) {
+						//		std::string dir;
+						//		for (const auto& entry : fs::directory_iterator("plugin/asr")) {
+						//			wins::WideToUtf8(dir, entry.path().c_str());
+						//			if (ImGui::Selectable(dir.c_str())) {
+						//				plug.asr.dir = std::move(dir);
+						//				break;
+						//			}
+						//		}
+						//	}
+						//	ImGui::EndCombo();
+						//}
+						//if (!plug.asr.dir.empty()) {
+						//	ImGui::Checkbox("load", &on1);
+						//}
+						//if (on0 != on1) {
+						//	if (on1) {
+						//		asrLoad();
+						//	}
+						//	else {
+						//		asrDownload();
+						//	}
+						//}
+						auto [on, changed]= ::loadPlugin("plugin/asr", plug.asr.dir, this, asrOn<false>(), &ClientApp::asrLoad, &ClientApp::asrDownload);
+						if (on) {
+							ImGui::BeginChild("##asr", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
 							ImGui::PushTextWrapPos(0.0f);
 
+							std::string partial;
 							{
 								std::lock_guard lk(plug.asr.mtx);
 								if (plug.asr.stream && plug.asr.poll) {
@@ -434,6 +479,7 @@ inline ClientApp::Page ClientApp::Show() {
 								if (!plug.asr.ui.partial.empty()) {
 									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 1.0f, 1.0f));
 									ImGui::TextUnformatted(plug.asr.ui.partial.c_str());
+									partial = plug.asr.ui.partial.c_str();
 									ImGui::PopStyleColor();
 								}
 								if (!plug.asr.ui.status.empty()) {
@@ -442,11 +488,86 @@ inline ClientApp::Page ClientApp::Show() {
 									ImGui::PopStyleColor();
 								}
 							}
+							{
+								std::lock_guard lock(plug.translator.mtx_ui);
+								plug.translator.toBeTranslated = partial;
+							}
+
 							ImGui::PopTextWrapPos();
 							ImGui::EndChild();
 						}
 						ImGui::TreePop();
 					}// asr
+					if (ImGui::TreeNode("translator")) {
+						ImGui::PushIdGuard pushIdGuard(__LINE__);
+						auto [on, changed] = ::loadPlugin("plugin/translator", plug.translator.dir, this, translatorOn<false>(), &ClientApp::translatorLoad, &ClientApp::translatorDownload);
+						if (on) {
+							if (changed) [[unlikely]] {
+								threadTranslate = std::make_unique<std::jthread>(&ClientApp::translateThread, this);
+							}
+
+
+							std::string now_label = plug.translator.direction.src + " -> " + plug.translator.direction.tar;
+							if (ImGui::BeginCombo("Translation Direction", now_label.c_str())) {
+								for (const auto& dir : plug.translator.directions) {
+									std::string item_label = dir.src + " -> " + dir.tar;
+
+									bool is_selected = plug.translator.direction == dir;
+
+									if (ImGui::Selectable(item_label.c_str(), is_selected)) {
+										if (!is_selected) [[likely]] {
+											char* error{};
+											if (plug.translator.unload) [[likely]] {
+												std::lock_guard lock{ plug.translator.mtx_ui };
+												plug.translator.unload(plug.translator.direction.src.c_str(), plug.translator.direction.tar.c_str(), &error);
+											}
+											{
+												std::lock_guard lock1{ plug.translator.mtx_ui };
+												plug.translator.direction = dir;
+											}
+											if (error) {
+												translatorSetError(error);
+											}
+										}
+									}
+
+									if (is_selected) {
+										ImGui::SetItemDefaultFocus();
+									}
+								}
+								ImGui::EndCombo();
+							}
+
+
+							ImGui::BeginChild("##translate", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
+							ImGui::PushTextWrapPos(0.0f);
+
+							if (!asrOn<true>()) {
+								if (plug.translator.error.empty()) {
+									plug.translator.error = "load asr before load translator";
+								}
+							}
+
+							{
+								std::lock_guard lock{ plug.translator.mtx_ui };
+								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 1.0f, 1.0f));
+								ImGui::TextUnformatted(plug.translator.result.c_str());
+								ImGui::PopStyleColor();
+							}
+
+							if (!plug.translator.error.empty()) {
+								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+								ImGui::TextUnformatted(plug.translator.error.c_str());
+								plug.translator.error.clear();
+								ImGui::PopStyleColor();
+							}
+
+							ImGui::PopTextWrapPos();
+							ImGui::EndChild();
+						}
+
+						ImGui::TreePop();
+					}// translator
 					ImGui::TreePop();
 				}// plugin
 
@@ -614,11 +735,12 @@ inline ClientApp::Page ClientApp::Show() {
 			auto renderDealing = *static_cast<renderFuncType*>(user->any_usage);
 			renderDealing();
 			});
+
 		while (!p_show.ended() && !clientClosed()) {
 			if (window->shouldClose()) [[unlikely]] {
 				p_show.setEnd(true, ShowPara::End::Default);
 				set(close_signal, true);
-				return Page::Tmp;
+				windowClosed = true;
 			}
 			glfwPollEvents();
 			renderDealing();
@@ -626,6 +748,13 @@ inline ClientApp::Page ClientApp::Show() {
 
 		client.Close();
 		client_audio.Close();
+
+	}
+	asrDownload();
+	translatorDownload();
+
+	if (windowClosed) {
+		return Page::Tmp;
 	}
 
 	println("show ended");

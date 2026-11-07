@@ -34,7 +34,7 @@ namespace asr {
         bool        dirty = false;
     };
 
-    static void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll, AsrUi& ui) {
+    inline void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll, AsrUi& ui) {
         std::vector<char> buf(65536);
         plugin_asr_result r{};
         r.struct_size = sizeof(r);
