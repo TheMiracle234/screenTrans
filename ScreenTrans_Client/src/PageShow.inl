@@ -5,7 +5,20 @@
 
 namespace fs = std::filesystem;
 
-struct loadPluginRes{
+template <class T, class... Args>
+void resize_emplace(std::vector<T>& v, std::size_t n, Args&&... args) {
+	const std::size_t old = v.size();
+	if (n <= old) {
+		v.erase(v.begin() + n, v.end());   // ✅ 只析构，不需要默认构造
+		return;
+	}
+	v.reserve(n);
+	for (std::size_t i = old; i < n; ++i) {
+		v.emplace_back(std::forward<Args>(args)...);
+	}
+}
+
+struct loadPluginRes {
 	bool on;
 	bool changed;
 };
@@ -95,10 +108,12 @@ inline ClientApp::Page ClientApp::Show() {
 			float texCoords[2];
 		};
 
-		gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
-		gl::Texture2D camTexture(1, 1, { 0,0,0,0 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
-		std::vector<uint8_t> camPixelBuffer;
-		ST::DecodedFrame cam_frame;
+		std::vector<gl::Texture2D> imgs;
+		////gl::Texture2D img(1, 1, { 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
+		std::vector<gl::Texture2D> camTextures;
+		////gl::Texture2D camTexture(1, 1, { 0,0,0,0 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
+		//std::vector<uint8_t> camPixelBuffer;
+		//ST::DecodedFrame cam_frame;
 
 		std::unique_ptr<std::jthread> threadVideoRecord;
 		std::unique_ptr<std::jthread> threadTranslate;
@@ -111,13 +126,14 @@ inline ClientApp::Page ClientApp::Show() {
 		boost::float64_t d_time = 0;
 		float fps = 0;
 		bool show_settings = true;
+		bool at_bottom = true;
 		struct {
 			char words_msg_buf[sizeof(ui.send.words_msg.buf)]{};
 			char name_buf[2 * sizeof(p1.name)]{};
 			char rename[sizeof(p1.name)]{};
 			uint32_t room_passwd{ Room::invalid_passwd };
 		} mid;
-		std::shared_ptr<ST::DecodedFrame> decodedFrame;
+		//std::shared_ptr<ST::DecodedFrame> decodedFrame;
 
 
 		auto last_time = std::chrono::steady_clock::now();
@@ -288,13 +304,44 @@ inline ClientApp::Page ClientApp::Show() {
 						}
 						glfwSetWindowTitle(window->m_get, ("client: " + logger.name).c_str());
 					}
+
+					// record_user
+					std::string current_record_name;
+					user::id_t record_uid = get(ui.room_user.record_user);
+					{
+						std::lock_guard lock(mtx_users);
+						auto it = users.find(record_uid);
+						if (it != users.end()) {
+							current_record_name = it->second.name;
+						}
+					}
+					ImGui::Text("Record User:");
+					if (ImGui::BeginCombo("##record_user_combo", current_record_name.c_str())) {
+						if (!get(ui.room_user.record_video)) {
+							std::lock_guard lock(mtx_users);
+							for (const auto& user : users) {
+								ImGui::PushU64Guard pushU64Guard(user.first);
+								bool is_selected = (record_uid == user.first);
+								if (ImGui::Selectable(user.second.name.c_str(), is_selected)) {
+									set(ui.room_user.record_user, user.first);
+								}
+								if (is_selected) {
+									ImGui::SetItemDefaultFocus();
+								}
+							}
+						}
+						ImGui::EndCombo();
+					}
+
 					// record_video
 					bool record_video0 = get(ui.room_user.record_video);
 					bool record_video1 = record_video0;
-					ImGui::Checkbox("record_video", &record_video1);
-					if (record_video0 != record_video1 && record_video1) {
-						initVideoRecord();
-						threadVideoRecord = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
+					if (get(ui.room_user.record_user) != user::invalid_id) {
+						ImGui::Checkbox("record_video", &record_video1);
+						if (record_video0 != record_video1 && record_video1) {
+							initVideoRecord();
+							threadVideoRecord = std::make_unique<std::jthread>(&ClientApp::videoRecord, this);
+						}
 					}
 					set(ui.room_user.record_video, record_video1);
 
@@ -310,18 +357,20 @@ inline ClientApp::Page ClientApp::Show() {
 					ImGui::Checkbox("is_muted", &is_muted_keep);
 					{
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
-						std::lock_guard lock(mtx_users);
-						auto chosen = users.find(get(ui.room_user.chosen_user));
-						assert(chosen != users.end());
-						//auto name_chosen = users[chosen->first].name + (get(users[chosen->first].is_host) ? "(host)" : "");
-						auto& chosen_user = users[chosen->first];
+						std::lock_guard lock0(ui.room_user.mtx_chosen_users);
+						std::lock_guard lock1(mtx_users);
+						//auto chosen = users.find(get(ui.room_user.chosen_user));
+						//assert(chosen != users.end());
+						////auto name_chosen = users[chosen->first].name + (get(users[chosen->first].is_host) ? "(host)" : "");
+						//auto& chosen_user = users[chosen->first];
 						constexpr char host_signal[] = "(host)";
-						memcpy(mid.name_buf, chosen_user.name.c_str(), chosen_user.name.size() + 1);
-						if (get(chosen_user.is_host)) {
-							memcpy(mid.name_buf + chosen_user.name.size(), &host_signal, sizeof(host_signal));
-						}
-						ImGui::Text("target:");
-						if (ImGui::TreeNode("target", mid.name_buf)) {
+						//memcpy(mid.name_buf, chosen_user.name.c_str(), chosen_user.name.size() + 1);
+						//if (get(chosen_user.is_host)) {
+						//	memcpy(mid.name_buf + chosen_user.name.size(), &host_signal, sizeof(host_signal));
+						//}
+						//ImGui::Text("target:");
+						//if (ImGui::TreeNode("target", mid.name_buf)) { // changed to "target" directly
+						if (ImGui::TreeNode("target", "choose_target")) { // changed to "target" directly
 							const bool is_host = isHost<false>();
 							if (ImGui::BeginTable("##target_users", is_host ? 6 : 4, ImGuiTableFlags_SizingFixedFit)) {
 								ImGui::TableSetupColumn("target");
@@ -346,9 +395,19 @@ inline ClientApp::Page ClientApp::Show() {
 
 									// select user
 									ImGui::TableNextColumn();
-									if (ImGui::Selectable(mid.name_buf)) {
-										set(ui.room_user.chosen_user, user.first);
+									bool chosen = ui.room_user.chosen_users.count(user.first);
+									ImGui::Checkbox(user.second.name.c_str(), &chosen);
+									if (chosen) {
+										ui.room_user.chosen_users.emplace(user.first, std::make_shared<RecvDataEx>(user.first));
 									}
+									else {
+										ui.room_user.chosen_users.erase(user.first);
+									}
+									//if (ImGui::Selectable(mid.name_buf)) {
+									//	std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+									//	ui.room_user.chosen_users.emplace(user.first);
+									//	//set(ui.room_user.chosen_user, user.first); // try_emplace
+									//}
 									// share_video
 									bool v = get(user.second.share_video);
 									ImGui::TableNextColumn();
@@ -466,7 +525,7 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::BeginChild("##asr", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
 							ImGui::PushTextWrapPos(0.0f);
 
-							std::string partial;
+							std::string partialStay;
 							{
 								std::lock_guard lk(plug.asr.mtx);
 								if (plug.asr.stream && plug.asr.poll) {
@@ -476,10 +535,11 @@ inline ClientApp::Page ClientApp::Show() {
 								if (!plug.asr.ui.history.empty()) {
 									ImGui::TextUnformatted(plug.asr.ui.history.c_str());
 								}
-								if (!plug.asr.ui.partial.empty()) {
+
+								if (!plug.asr.ui.partialStay.empty()) {
 									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 1.0f, 1.0f));
-									ImGui::TextUnformatted(plug.asr.ui.partial.c_str());
-									partial = plug.asr.ui.partial.c_str();
+									ImGui::TextUnformatted(plug.asr.ui.partialStay.c_str());
+									partialStay = plug.asr.ui.partialStay;
 									ImGui::PopStyleColor();
 								}
 								if (!plug.asr.ui.status.empty()) {
@@ -491,11 +551,15 @@ inline ClientApp::Page ClientApp::Show() {
 							}
 							{
 								std::lock_guard lock(plug.translator.mtx_ui);
-								plug.translator.toBeTranslated = partial;
+								plug.translator.toBeTranslated = partialStay;
 							}
 
 							ImGui::PopTextWrapPos();
+							if (at_bottom) {
+								ImGui::SetScrollHereY(1.0f);
+							}
 							ImGui::EndChild();
+							ImGui::Checkbox("at_bottom", &at_bottom);
 						}
 						ImGui::TreePop();
 					}// asr
@@ -580,88 +644,171 @@ inline ClientApp::Page ClientApp::Show() {
 
 				// ============ main window ============ 
 			style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Alpha = 0
-			ImGui::Begin("screen", nullptr, ImGuiWindowFlags_NoScrollbar);
-			{
-				const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
-				ImVec2 winSize = ImGui::GetWindowSize();
-				winSize.y -= titleBarH;
-				//const auto imgSize = img.imgSize();
-				ImVec2 show_img_size;
-
-				float offsetX{};
-				float offsetY{};
-				const float img_w_y = static_cast<float>(rv_sc_orig_w) / rv_sc_orig_h;
-				const float win_w_y = winSize.x / winSize.y;
-				if (img_w_y > win_w_y) {
-					offsetX = 0.0f;
-					show_img_size.x = winSize.x;
-					show_img_size.y = show_img_size.x / img_w_y;
-					offsetY = (winSize.y - show_img_size.y) / 2;
-				}
-				else {
-					offsetY = 0.0f;
-					show_img_size.y = winSize.y;
-					show_img_size.x = show_img_size.y * img_w_y;
-					offsetX = (winSize.x - show_img_size.x) / 2;
-				}
-				offsetY += titleBarH;
-				ImGui::SetCursorPos(ImVec2(offsetX, offsetY));
-				ImGui::Image(img.id(), show_img_size);
-			}
-			ImGui::End();// main
-
+			
 			//////////////////////////// camera
-			const user::id_t target_id = get(ui.room_user.chosen_user);
-			bool target_share_camera;
+			// camTextures.size(chosen_users.size()), for each of camTextures
 			{
-				std::lock_guard lock(mtx_users);
-				target_share_camera = users[target_id].share_camera;
-			}
+				std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+				::resize_emplace(camTextures, ui.room_user.chosen_users.size(), 1, 1, std::vector<uint8_t>{ 0,0,0,0 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
+				//camTextures.resize(ui.room_user.chosen_users.size());
+				size_t i = 0;
+				std::string user_name{};
+				for (const auto& chosen_user : ui.room_user.chosen_users) {
+					const user::id_t target_id = chosen_user.first;
+					auto& total_camera_frames = chosen_user.second->total_camera_frames;
+					//auto& camTexture = chosen_user.second->camTexture;
+					auto& cam_frame = chosen_user.second->cam_frame;
+					auto& camTexture = camTextures[i];
+					const auto rv_cam_orig_w = get(chosen_user.second->rv_cam_orig_w);
+					const auto rv_cam_orig_h = get(chosen_user.second->rv_cam_orig_h);
 
-			if (!total_camera_frames.empty()) {
-				total_camera_frames.pop(cam_frame);
-			}
+					//const user::id_t target_id = get(ui.room_user.chosen_user);
+					bool target_share_camera{};
+					{
+						std::lock_guard lock(mtx_users);
+						auto user = users.find(target_id);
+						user_name.clear();
+						assert(user != users.end());
+						target_share_camera = get(user->second.share_camera);
+						if (target_share_camera) {
+							user_name = user->second.name;
+						}
+					}
 
-			int cam_w = cam_frame.width;
-			int cam_h = cam_frame.height;
-			auto& cam_data = cam_frame.rgba;
-			if (cam_w > 0 && cam_h > 0 && cam_data.size() == cam_w * cam_h * 4) {
-				camTexture.bindTo(0);
-				camTexture.resize(nullptr, cam_w, cam_h, 4);
-				camTexture.resetData(cam_frame.rgba, 4);
-			}
+					if (!total_camera_frames.empty()) {
+						total_camera_frames.pop(cam_frame);
+					}
+
+					int cam_w = cam_frame.width;
+					int cam_h = cam_frame.height;
+					auto& cam_data = cam_frame.rgba;
+					if (cam_w > 0 && cam_h > 0 && cam_data.size() == cam_w * cam_h * 4) {
+						camTexture.bindTo(0);
+						camTexture.resize(nullptr, cam_w, cam_h, 4);
+						camTexture.resetData(cam_frame.rgba, 4);
+					}
 
 
-			if (target_share_camera) {
-				ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f), ImGuiCond_FirstUseEver);
-				ImGui::SetNextWindowPos(ImVec2(static_cast<float>(sc_width - 340), 20.0f), ImGuiCond_FirstUseEver);
-				ImGui::Begin("camera", nullptr, ImGuiWindowFlags_NoScrollbar);
-
-				const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
-				ImVec2 winSize = ImGui::GetWindowSize();
-				winSize.y -= titleBarH;
-				const float img_w_y = static_cast<float>(rv_cam_orig_w) / rv_cam_orig_h;
-				const float win_w_y = winSize.x / winSize.y;
-				ImVec2 show_img_size;
-				float offsetX, offsetY;
-				if (img_w_y > win_w_y) {
-					offsetX = 0.0f;
-					show_img_size.x = winSize.x;
-					show_img_size.y = show_img_size.x / img_w_y;
-					offsetY = (winSize.y - show_img_size.y) / 2;
+					if (target_share_camera) {
+						ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f), ImGuiCond_FirstUseEver);
+						ImGui::SetNextWindowPos(ImVec2(static_cast<float>(sc_width - 340), 20.0f), ImGuiCond_FirstUseEver);
+						ImGui::Begin(("camera-" + users[target_id].name + "###camera-" + std::to_string(i)).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
+						const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
+						ImVec2 winSize = ImGui::GetWindowSize();
+						winSize.y -= titleBarH;
+						const float img_w_y = static_cast<float>(rv_cam_orig_w) / rv_cam_orig_h;
+						const float win_w_y = winSize.x / winSize.y;
+						ImVec2 show_img_size;
+						float offsetX, offsetY;
+						if (img_w_y > win_w_y) {
+							offsetX = 0.0f;
+							show_img_size.x = winSize.x;
+							show_img_size.y = show_img_size.x / img_w_y;
+							offsetY = (winSize.y - show_img_size.y) / 2;
+						}
+						else {
+							offsetY = 0.0f;
+							show_img_size.y = winSize.y;
+							show_img_size.x = show_img_size.y * img_w_y;
+							offsetX = (winSize.x - show_img_size.x) / 2;
+						}
+						offsetY += titleBarH;
+						ImGui::SetCursorPos(ImVec2{ offsetX, offsetY });
+						ImGui::Image(camTexture.id(), show_img_size, ImVec2(0, 1), ImVec2(1, 0));
+						ImGui::End();
+					}
+					////////////////////////////
+					++i;
 				}
-				else {
-					offsetY = 0.0f;
-					show_img_size.y = winSize.y;
-					show_img_size.x = show_img_size.y * img_w_y;
-					offsetX = (winSize.x - show_img_size.x) / 2;
-				}
-				offsetY += titleBarH;
-				ImGui::SetCursorPos(ImVec2{ offsetX, offsetY });
-				ImGui::Image(camTexture.id(), show_img_size, ImVec2(0, 1), ImVec2(1, 0));
-				ImGui::End();
 			}
-			////////////////////////////
+
+			// same as camTextures
+			{
+				std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+				std::size_t i = 0;
+				::resize_emplace(imgs, ui.room_user.chosen_users.size(), 1, 1, std::vector<uint8_t>{ 0x33, 0x33, 0x33, 0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4);
+				std::string user_name;
+				for (const auto& chosen_user : ui.room_user.chosen_users) {
+					auto& img = imgs[i];
+					const user::id_t target_id = chosen_user.first;
+					auto& total_video_frames_v1 = chosen_user.second->total_video_frames_v1;
+					//auto& img = chosen_user.second->img;
+					auto& decodedFrame = chosen_user.second->decodedFrame;
+					const auto rv_sc_orig_w = get(chosen_user.second->rv_sc_orig_w);
+					const auto rv_sc_orig_h = get(chosen_user.second->rv_sc_orig_h);
+
+					if (!total_video_frames_v1.empty()) {
+						total_video_frames_v1.pop(decodedFrame);
+					}
+					int width{};
+					int height{};
+					std::vector<uint8_t>* data{};
+
+					if (decodedFrame) [[likely]] {
+						width = decodedFrame->width;
+						height = decodedFrame->height;
+						data = &decodedFrame->rgba;
+					}
+
+
+					bool share_video{};
+					if (decodedFrame && width > 0 && height > 0 && data->size() == (size_t)width * height * 4) {
+						user_name.clear();
+						{
+							std::lock_guard lock(mtx_users);
+							auto& user = users[target_id];
+							share_video = user.share_video;
+							if (share_video) {
+								user_name = user.name;
+							}
+						}
+
+						img.bindTo(0);
+
+						if (share_video) {
+							img.resize(nullptr, width, height, 4);
+							img.resetData(*data, 4);
+						}
+						else {
+							img.resize(nullptr, 1, 1, 4);
+							img.resetData({ 0,0,0,0 }, 4);
+						}
+					}
+					
+					if (share_video) {
+						ImGui::Begin(("screen-" + user_name + "###screen-" + std::to_string(i)).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
+						const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
+						ImVec2 winSize = ImGui::GetWindowSize();
+						winSize.y -= titleBarH;
+						//const auto imgSize = img.imgSize();
+						ImVec2 show_img_size;
+
+						float offsetX{};
+						float offsetY{};
+						const float img_w_y = static_cast<float>(rv_sc_orig_w) / rv_sc_orig_h;
+						const float win_w_y = winSize.x / winSize.y;
+						if (img_w_y > win_w_y) {
+							offsetX = 0.0f;
+							show_img_size.x = winSize.x;
+							show_img_size.y = show_img_size.x / img_w_y;
+							offsetY = (winSize.y - show_img_size.y) / 2;
+						}
+						else {
+							offsetY = 0.0f;
+							show_img_size.y = winSize.y;
+							show_img_size.x = show_img_size.y * img_w_y;
+							offsetX = (winSize.x - show_img_size.x) / 2;
+						}
+						offsetY += titleBarH;
+						ImGui::SetCursorPos(ImVec2(offsetX, offsetY));
+						ImGui::Image(img.id(), show_img_size);
+						ImGui::End();// main
+					}
+
+					++i;
+				}
+			}
+
 
 
 
@@ -686,42 +833,7 @@ inline ClientApp::Page ClientApp::Show() {
 
 			std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_TIME));
 
-
-			if (!total_video_frames_v1.empty()) {
-				total_video_frames_v1.pop(decodedFrame);
-			}
-
-
-			int width{};
-			int height{};
-			std::vector<uint8_t>* data{};
-
-			if (decodedFrame) [[likely]] {
-				width = decodedFrame->width;
-				height = decodedFrame->height;
-				data = &decodedFrame->rgba;
-			}
-
-
-			if (decodedFrame && width > 0 && height > 0 && data->size() == (size_t)width * height * 4) {
-				bool share_video;
-				{
-					std::lock_guard lock(mtx_users);
-					share_video = users[get(ui.room_user.chosen_user)].share_video;
-				}
-
-				img.bindTo(0);
-
-				if (share_video) {
-					img.resize(nullptr, width, height, 4);
-					img.resetData(*data, 4);
-				}
-				else {
-					img.resize(nullptr, 1, 1, 4);
-					img.resetData({ 0,0,0,0 }, 4);
-				}
-			}
-			};
+		};
 		any_usage = &renderDealing;
 		using renderFuncType = decltype(renderDealing);
 		glfwSetWindowUserPointer(window->m_get, this);

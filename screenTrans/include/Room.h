@@ -4,19 +4,23 @@
 
 #include <vector>
 #include <thread>
-#include <net/tcp/Client.hpp>
 #include <optional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
-#include <unordered_map>
+//#include <unordered_map>
 #include <semaphore>
 #include <utility>
 
+#include <net/tcp/Client.hpp>
+
+#include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
+
 namespace user {
-	using id_t = net::socket_t;
-	inline constexpr id_t invalid_id = net::invalid_socket;
-	inline constexpr user::id_t public_target = static_cast<user::id_t>(net::invalid_socket);
+	using id_t = std::uint64_t;
+	inline constexpr id_t invalid_id = static_cast<id_t>(net::invalid_socket);
+	inline constexpr user::id_t public_target = invalid_id;
 }
 
 namespace room {
@@ -24,6 +28,11 @@ namespace room {
 }
 
 class Room {
+	template<class A, class B>
+	using UnorderedMap = boost::unordered_flat_map<A, B>;
+	template<class A>
+	using UnorderedSet = boost::unordered_flat_set<A>;
+
 public:
 	constexpr static inline uint32_t invalid_passwd = 0;
 private:
@@ -55,7 +64,8 @@ private:
 	std::vector<std::jthread> m_clients_threads;
 	std::mutex m_mtx_used;
 	std::mutex m_mtx_need_check;
-	std::unordered_map<net::socket_t, net::socket_t> m_choices_of; // <socket of client(in server), client socket choice>
+	UnorderedMap<net::socket_t, UnorderedSet<net::socket_t>> m_choices_of; // <socket of client(in server), client socket choice>
+	//std::unordered_map<net::socket_t, net::socket_t> m_choices_of; // <socket of client(in server), client socket choice>
 public:
 	Room(uint32_t passwd);
 	~Room();
@@ -67,7 +77,7 @@ public:
 	bool used() { return m_used.load(std::memory_order_acquire); }
 	bool empty() { std::lock_guard lock(m_mtx_client_sockets); return m_client_sockets.size() == 0; }
 	uint32_t id() { return m_id.load(std::memory_order_acquire); }
-	uint32_t passwd() { return m_passwd.load(std::memory_order_acquire); }
+	uint32_t passwd() { return m_passwd.load(std::memory_order_acquire); }	
 	void setPasswd(uint32_t passwd) { m_passwd.store(passwd, std::memory_order_release); }
 	//std::unique_ptr<Client>& client(size_t i) { return m_client_sockets[i]; }
 	std::jthread& thread(size_t i) { return m_clients_threads[i]; }

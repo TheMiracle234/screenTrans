@@ -1,7 +1,9 @@
 ﻿#pragma once
-#include <plugin/asr.h>
 #include <string.h>
 #include <mutex>
+
+#include <plugin/asr.h>
+#include <>
 
 namespace plugin {
 namespace asr {
@@ -29,6 +31,7 @@ namespace asr {
         std::mutex  mtx;
         std::string history;
         std::string partial;
+        std::string partialStay;
         std::string status;
         uint64_t    current_utterance = 0;
         bool        dirty = false;

@@ -1,11 +1,17 @@
 /.vs/
 *.vcxproj.user
+
 /x64/
 /screenTrans/x64/
 /ScreenTrans_Client/x64/
 /ScreenTrans_Server/x64/
 /ASR/x64/
 /plugin_Translator/x64/
+/plugin_Summary/x64/
 /imguiTest/x64/
+
+/plugin_Summary/
 /ScreenTrans_Client/plugin/
+/ScreenTrans_Client/record/
 /imguiTest/plugin
+/linux/

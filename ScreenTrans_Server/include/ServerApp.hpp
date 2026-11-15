@@ -42,5 +42,5 @@ private:
 	void pushAudioConnection(net::tcp::Client audioClient);
 public:
 	ServerApp();
-	void run();
+	int run(int argc, char** argv);
 };

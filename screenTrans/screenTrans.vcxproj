@@ -127,7 +127,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <EnableModules>true</EnableModules>
       <BuildStlModules>false</BuildStlModules>
-      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ASR/include;$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
     </ClCompile>
@@ -186,6 +186,7 @@
     <ClInclude Include="include\gl\Window.h" />
     <ClInclude Include="include\net\AddrInfo.hpp" />
     <ClInclude Include="include\net\tcp\Client.hpp" />
+    <ClInclude Include="include\plugin\Asr.hpp" />
     <ClInclude Include="include\plugin\Loader.hpp" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />

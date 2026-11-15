@@ -33,7 +33,19 @@ namespace tcp {
 				continue;
 			}
 
-			// 双栈：无论 Windows 默认 1 还是 Linux 默认 0，统一强制关掉 V6ONLY。
+			// ==========================================
+			// 1. 设置 SO_REUSEADDR (跨平台，解决 TIME_WAIT 问题)
+			// ==========================================
+			int opt = 1;
+			// 注意：Windows 的 setsockopt 第四个参数要求是 const char*，
+			// Linux 要求是 const void*。使用 reinterpret_cast<const char*> 可以完美兼容两者。
+			if (setsockopt(tmp.id(), SOL_SOCKET, SO_REUSEADDR,
+				reinterpret_cast<const char*>(&opt), sizeof(opt)) != 0) {
+				// 通常不会失败，失败也可以继续尝试 bind，所以只记录不打回
+				// std::cerr << "setsockopt(SO_REUSEADDR) failed" << std::endl; 
+			}
+
+			// 2. 双栈：无论 Windows 默认 1 还是 Linux 默认 0，统一强制关掉 V6ONLY。
 			// 失败仅意味着退回平台默认，不当作 Init 失败。
 			if (ai.ai_family == AF_INET6) {
 				int off = 0;
@@ -60,6 +72,7 @@ namespace tcp {
 		if (!Init(ip, port, recvFrom)) {
 			std::cerr << "Server init error" << std::endl;
 			(void)getchar();
+			exit(1);
 		}
 	}
 
