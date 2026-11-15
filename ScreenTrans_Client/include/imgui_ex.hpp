@@ -26,6 +26,21 @@ static inline void set(T& v, typename T::value_type val, std::memory_order order
 	v.store(val, order);
 }
 
+template<std_atomic T>
+[[nodiscard]] static inline auto getx(T& v, std::memory_order order = std::memory_order_relaxed) noexcept -> typename T::value_type {
+	return v.load(order);
+}
+
+template<std_atomic T>
+[[nodiscard]] static inline auto getx(const T& v, std::memory_order order = std::memory_order_relaxed) noexcept -> typename T::value_type {
+	return v.load(order);
+}
+
+template<std_atomic T>
+static inline void setx(T& v, typename T::value_type val, std::memory_order order = std::memory_order_relaxed) noexcept {
+	v.store(val, order);
+}
+
 #define COMP_ATOMIC(comp_func, label, atomic_var, ...) do { \
 	static_assert(std_atomic<decltype(atomic_var)>); \
 	using T = decltype(atomic_var)::value_type; \

@@ -6,7 +6,15 @@
 
 #define USE_IMGUI 1
 #define USE_IMGUI_VIEWPORT 1
-#define LISTEN_MYSELF 1
+#define LISTEN_MYSELF 0
+#define RECV_DATA_EX_MOVABLE 0
+
+#ifndef NDEBUG
+#ifdef LISTEN_MYSELF
+#	undef LISTEN_MYSELF
+#	define LISTEN_MYSELF 0
+#endif // LISTEN_MYSELF
+#endif
 
 #if	USE_IMGUI
 #	include "imgui.h"
@@ -29,6 +37,7 @@
 #include <ScreenCapture.h>
 #include <st_signals.h>
 #include <Room.h>
+
 #include <util/util.hpp>
 #include <util/Timer.hpp>
 #include <imgui_ex.hpp>
@@ -43,7 +52,7 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
-#include <unordered_map>
+//#include <unordered_map>
 #include <queue>
 #include <vector>
 #include <chrono>
@@ -61,6 +70,8 @@ using std::literals::chrono_literals::operator""s;
 #include <boost/lockfree/spsc_queue.hpp>
 #include <boost/cstdfloat.hpp>
 #include <boost/circular_buffer.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
+#include <boost/unordered/unordered_flat_map.hpp>
 
 #include <ccap.h>
 #pragma comment(lib, "mf.lib")
@@ -81,11 +92,11 @@ using std::literals::chrono_literals::operator""s;
 
 #include <Mp4Recorder.hpp>
 
-#ifndef NDEBUG
+//#ifndef NDEBUG
 #	define print(x) std::cout<< x
-#else
-#	define print(x)
-#endif
+//#else
+//#	define print(x)
+//#endif
 
 #define println(x) print(x << "\n")
 #define PL println(__LINE__)
@@ -97,8 +108,6 @@ using std::literals::chrono_literals::operator""s;
 using ST::H264Encoder, ST::H264Decoder, ST::ScreenCapture;
 
 inline constexpr int SLEEP_TIME = 0;
-//inline constexpr size_t MAX_VIDEO_FRAMES = 9;
-//inline constexpr size_t KEEP_FRAMES = 3;
 inline constexpr boost::float64_t MAX_MAX_FPS = 150.0;
 inline constexpr boost::float64_t MIN_MAX_FPS = 5.0;
 namespace video {
@@ -144,6 +153,13 @@ template <typename CB>
 [[nodiscard]] std::size_t cbPop(CB& cb, typename CB::pointer out, std::size_t count);
 
 class ClientApp {
+
+	template<class A, class B>
+	using UnorderedMap = boost::unordered_flat_map<A, B>;
+
+	template<class A>
+	using UnorderedSet = boost::unordered_flat_set<A>;
+
 private:
 	bool cam_ok{ false };
 	std::counting_semaphore<> cam_sync0{ 0 };
@@ -160,12 +176,13 @@ private:
 	static inline constexpr size_t send_camera_packets_count = 4;
 	static inline constexpr size_t recv_camera_packets_count = 4;
 	static inline constexpr size_t total_capture_frames_count = 4;
-	std::atomic<int32_t> rv_cam_orig_w{ 1000 };
-	std::atomic<int32_t> rv_cam_orig_h{ 800 };
+	static inline constexpr size_t total_camera_frames_count = 4;
+	//std::atomic<int32_t> rv_cam_orig_w{ 1000 };
+	//std::atomic<int32_t> rv_cam_orig_h{ 800 };
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_camera_packets{ send_camera_packets_count };
-	boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_camera_packets{ recv_camera_packets_count };
+	//boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_camera_packets{ recv_camera_packets_count };
 	boost::lockfree::spsc_queue<ST::DecodedFrame> total_capture_frames{ total_capture_frames_count }; // to be encoded
-	boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ 4 }; // got from others
+	//boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ 4 }; // got from others
 
 
 private:
@@ -294,20 +311,19 @@ private:
 
 	//std::mutex mtx_video_frames;
 	std::mutex mtx_close;
-	std::mutex mtx_users;
+	std::mutex mtx_users; // mtx_chosen_users mtx_users
 	std::mutex mtx_audioFramesLong;
 	std::mutex mtx_speechWords;
 
 	static inline constexpr size_t send_screen_packets_count = 4;
 	static inline constexpr size_t recv_screen_packets_count = 4;
-	std::atomic<int32_t> rv_sc_orig_w{ 1920 };
-	std::atomic<int32_t> rv_sc_orig_h{ 1080 };
+	//std::atomic<int32_t> rv_sc_orig_w{ 1920 };
+	//std::atomic<int32_t> rv_sc_orig_h{ 1080 };
 	boost::lockfree::spsc_queue<std::vector<uint8_t>> send_screen_packets{ send_screen_packets_count };
-	boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_screen_packets{ recv_screen_packets_count };
-	boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>> total_video_frames_v1{ 4 };
+	//boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_screen_packets{ recv_screen_packets_count };
+	//boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>> total_video_frames_v1{ 4 };
 
 	//boost::lockfree::spsc_queue<ST::DecodedFrame> local_camera_frames{ 4 };
-	//std::queue<ST::DecodedFrame> total_video_frames;
 	std::atomic<bool> close_signal = false;
 	struct User {
 		std::atomic<bool> is_host{ false };
@@ -317,14 +333,44 @@ private:
 		static constexpr float audio_playing_least = 0.01f;
 		std::atomic<bool> audio_playing{ false };
 		std::string name;
-		//boost::lockfree::spsc_queue<float> audioBuf{ static_cast<size_t>(audio::sampleRate * audio::channels * audio::bufSec) };
 		boost::circular_buffer<float> audioBuf{ static_cast<size_t>(audio::sampleRate * audio::channels * audio::bufSec) };
 		struct {
-			//std::mutex mtx;
 			boost::circular_buffer<std::string> buf{ words_msg_max_count };
 		} total_words_msg;
-	};
-	std::unordered_map < user::id_t, User > users; // init with self
+
+		User() = default;
+
+		User(const User&) = delete;
+		User& operator=(const User&) = delete;
+
+		User(User&& other) noexcept
+			: is_host(other.is_host.exchange(false, std::memory_order_relaxed)),
+			share_video(other.share_video.exchange(false, std::memory_order_relaxed)),
+			share_audio(other.share_audio.exchange(false, std::memory_order_relaxed)),
+			share_camera(other.share_camera.exchange(false, std::memory_order_relaxed)),
+			audio_playing(other.audio_playing.exchange(false, std::memory_order_relaxed)),
+			name(std::move(other.name)),
+			audioBuf(std::move(other.audioBuf)),
+			total_words_msg{ std::move(other.total_words_msg.buf) }
+		{
+		}
+
+		User& operator=(User&& other) noexcept {
+			if (this == &other) return *this;
+
+			is_host.store(other.is_host.exchange(false, std::memory_order_relaxed), std::memory_order_relaxed);
+			share_video.store(other.share_video.exchange(false, std::memory_order_relaxed), std::memory_order_relaxed);
+			share_audio.store(other.share_audio.exchange(false, std::memory_order_relaxed), std::memory_order_relaxed);
+			share_camera.store(other.share_camera.exchange(false, std::memory_order_relaxed), std::memory_order_relaxed);
+			audio_playing.store(other.audio_playing.exchange(false, std::memory_order_relaxed), std::memory_order_relaxed);
+
+			name = std::move(other.name);
+			audioBuf = std::move(other.audioBuf);
+			total_words_msg.buf = std::move(other.total_words_msg.buf);
+			return *this;
+		}
+	};	
+	UnorderedMap < user::id_t, User > users; // init with self
 	std::string speechWords;
 
 
@@ -380,6 +426,54 @@ private:
 		} room_user;
 	};
 
+	struct RecvDataEx {
+
+#if RECV_DATA_EX_MOVABLE
+		std::unique_ptr<boost::lockfree::spsc_queue<std::vector<uint8_t>>> recv_camera_packets
+			= std::make_unique<boost::lockfree::spsc_queue<std::vector<uint8_t>>>(recv_camera_packets_count);
+		std::unique_ptr<boost::lockfree::spsc_queue<std::vector<uint8_t>>> recv_screen_packets
+			= std::make_unique<boost::lockfree::spsc_queue<std::vector<uint8_t>>>(recv_screen_packets_count);
+
+		std::unique_ptr<boost::lockfree::spsc_queue<ST::DecodedFrame>> total_camera_frames =
+			std::make_unique<boost::lockfree::spsc_queue<ST::DecodedFrame>>(total_camera_frames_count);
+		std::unique_ptr<boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>>> total_video_frames_v1 = 
+			std::make_unique<boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>>>(4);
+
+		RecvDataEx(const RecvDataEx&) = delete;
+		RecvDataEx& operator=(const RecvDataEx&) = delete;
+		RecvDataEx(RecvDataEx&&) noexcept = default;
+		RecvDataEx& operator=(RecvDataEx&&) noexcept = default;
+#else
+		boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_camera_packets{ recv_camera_packets_count };
+		boost::lockfree::spsc_queue<std::vector<uint8_t>> recv_screen_packets{ recv_screen_packets_count };
+
+		boost::lockfree::spsc_queue<ST::DecodedFrame> total_camera_frames{ total_camera_frames_count };
+		boost::lockfree::spsc_queue<std::shared_ptr<ST::DecodedFrame>> total_video_frames_v1{ 4 };
+
+		RecvDataEx(const RecvDataEx&) = delete;
+		RecvDataEx& operator=(const RecvDataEx&) = delete;
+		RecvDataEx(RecvDataEx&&) noexcept = delete;
+		RecvDataEx& operator=(RecvDataEx&&) noexcept = delete;
+#endif
+		const user::id_t user;
+		H264Decoder cameraDecoder{};
+		H264Decoder videoDecoder{};
+
+		std::atomic<int32_t> rv_sc_orig_w{ 1920 };
+		std::atomic<int32_t> rv_sc_orig_h{ 1080 };
+		std::atomic<int32_t> rv_cam_orig_w{ 1000 };
+		std::atomic<int32_t> rv_cam_orig_h{ 800 };
+
+		// only used for show
+		//gl::Texture2D img{ 1, 1,{ 0x33,0x33,0x33,0xFF }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4 };
+		//gl::Texture2D camTexture{ 1, 1,{ 0,0,0,0 }, gl::GpuTextureFmt::RGBA8, gl::TextureFmt::BGRA, 4 };
+		std::vector<uint8_t> camPixelBuffer;
+		ST::DecodedFrame cam_frame;
+		std::shared_ptr<ST::DecodedFrame> decodedFrame;
+
+		RecvDataEx(user::id_t user0) : user(user0) {}
+	};
+
 	struct {
 		struct {
 			std::atomic<bool> share_audio{ false };
@@ -420,7 +514,9 @@ private:
 		struct RoomUser{
 			std::atomic<bool> is_kicked_off{ false };
 			std::atomic<bool> is_muted_keep{ false };
-			std::atomic<user::id_t> chosen_user; // init with self
+			std::mutex mtx_chosen_users; // mtx_chosen_users mtx_users
+			UnorderedMap<user::id_t, std::shared_ptr<RecvDataEx>> chosen_users; // init with self, share_ptr: cuz may destruct while "decoding"
+			std::atomic<user::id_t> record_user{ user::invalid_id };
 			std::atomic<bool> record_video{ false };
 			struct {
 				std::atomic<user::id_t> wanna_kick_off{ user::invalid_id };
@@ -490,14 +586,33 @@ private:
 	void asrLoad();
 	void asrDownload();
 	template<bool mtx>
-	void asrPushData(std::vector<float>& audioFrames);
+	void asrPushData(const float* audioFrames, size_t count);
+	//template<bool mtx>
+	//void asrSetStatus(std::string_view status) {
+	//	if constexpr (mtx) {
+	//		std::lock_guard lock{ plug.asr.ui.mtx };
+	//		if (plug.asr.ui.status.empty()) { plug.asr.ui.status = status; }
+	//	}
+	//	else {
+	//		if (plug.asr.ui.status.empty()) { plug.asr.ui.status = status; }
+	//	}
+	//}
 
 	template<bool mtx>
 	bool translatorOn();
 	void translatorLoad();
 	void translatorDownload();
 	void translatorLoadDirections();
-	void translatorSetError(std::string_view error) { if (plug.translator.error.empty()) { plug.translator.error = error; } }
+	template<bool mtx>
+	void translatorSetError(std::string_view error) { 
+		if constexpr (mtx) {
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			if (plug.translator.error.empty()) { plug.translator.error = error; }
+		}
+		else {
+			if (plug.translator.error.empty()) { plug.translator.error = error; }
+		}
+	}
 
 	void translateThread();
 

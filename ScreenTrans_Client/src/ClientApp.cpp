@@ -99,7 +99,6 @@ void ClientApp::EnableCamera() {
 			ST::DecodedFrame dummy;
 			while (total_capture_frames.pop(dummy)) {}
 			while (send_camera_packets.pop(dummy.rgba)) {}
-			while (total_camera_frames.pop(dummy)) {}
 		}
 	}
 	else {
@@ -238,26 +237,6 @@ void ClientApp::CameraCaptureEncode() {
 	}
 }
 
-void ClientApp::CameraDecode() {
-	//DEFER{ [this]() {
-	//	p_show.wait_threads.release();
-	//} };
-	H264Decoder decoder;
-	std::vector<std::vector<uint8_t>> pkts(recv_camera_packets_count);
-	while (!p_show.ended() && !clientClosed()) {
-		const size_t pkts_count = recv_camera_packets.pop(pkts.data(), recv_camera_packets_count);
-		if (pkts_count == 0) {
-			std::this_thread::sleep_for(std::chrono::microseconds(500));
-			continue;
-		}
-		for (size_t i = 0; i < pkts_count; ++i) {
-			auto frames = decoder.DecodePacket(pkts[i]);
-			for (auto& frame : frames) {
-				total_camera_frames.push(std::move(frame));
-			}
-		}
-	}
-}
 
 void ClientApp::storeUiState() {
 	std::FILE* const file = std::fopen("FlexMeet.ini", "wb");
@@ -380,10 +359,17 @@ void ClientApp::Receive() {
 		}
 		if (rv.signals & signal_closed) [[unlikely]] {
 			{
-				std::lock_guard lock(mtx_users);
-				auto count = std::erase_if(users, [&](auto& user) { return user.first == rv.id;});
+				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
+				std::lock_guard lock_users(mtx_users);
+				users.erase(rv.id);
+				//auto count = std::erase_if(users, [&](auto& user) { return user.first == rv.id;});
+
+				ui.room_user.chosen_users.erase(rv.id);
+				if (ui.room_user.chosen_users.empty()) {
+					ui.room_user.chosen_users.emplace(getx(logger.id), std::make_shared<RecvDataEx>(getx(logger.id)));
+				}
 			}
-			set(ui.room_user.chosen_user, get(logger.id));
+			//set(ui.room_user.chosen_user, get(logger.id)); // ### 遍历选择用户，若存在rv.id{ 若只有1个，则换成logger.id，否则erase }
 			continue;
 		}
 
@@ -441,15 +427,28 @@ void ClientApp::Receive() {
 			if (!client.ReceiveBy(rv.pk_size)) [[unlikely]] { break; }
 			client.ReceiveBy(rv.video_w);
 			client.ReceiveBy(rv.video_h);
-			set(rv_sc_orig_w, rv.video_w);
-			set(rv_sc_orig_h, rv.video_h);
+			{
+				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
+				auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+				if (chosen_user != ui.room_user.chosen_users.end()) {
+					set(chosen_user->second->rv_sc_orig_w, rv.video_w);
+					set(chosen_user->second->rv_sc_orig_h, rv.video_h);
+				}
+			}
 			const net::EndSrcTar endSrcTar{
 				rv.signals & signal_littleEnd ? net::End::little : net::End::big, 
 				net::End::native
 			};
 			for (int i = 0;i < rv.pk_size;++i) {
 				if (!client.ReceiveBy(rv.pk, endSrcTar)) [[unlikely]] { break; }
-				recv_screen_packets.push(std::move(rv.pk));
+				{
+					std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+					auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+					if (chosen_user != ui.room_user.chosen_users.end()) {
+						chosen_user->second->recv_screen_packets.push(std::move(rv.pk));
+					}
+					//recv_screen_packets.push(std::move(rv.pk));
+				}
 			}
 		}
 
@@ -458,21 +457,34 @@ void ClientApp::Receive() {
 			std::lock_guard lock(mtx_users);
 			set(users[rv.id].share_camera, rv.share_camera);
 		}
-		if (rv.share_camera)
-		{
+		if (rv.share_camera) {
 			if (!client.ReceiveBy(rv.cam_pk_size)) [[unlikely]] { break; }
 			client.ReceiveBy(rv.cam_w);
 			client.ReceiveBy(rv.cam_h);
-			set(rv_cam_orig_w, rv.cam_w);
-			set(rv_cam_orig_h, rv.cam_h);
+			//set(rv_cam_orig_w, rv.cam_w);
+			//set(rv_cam_orig_h, rv.cam_h);
+			{
+				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
+				auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+				if (chosen_user != ui.room_user.chosen_users.end()) {
+					set(chosen_user->second->rv_cam_orig_w, rv.cam_w);
+					set(chosen_user->second->rv_cam_orig_h, rv.cam_h);
+				}
+			}
 			const net::EndSrcTar endSrcTar{
 				rv.signals & signal_littleEnd ? net::End::little : net::End::big,
 				net::End::native
 			};
-			for (int i = 0; i < rv.cam_pk_size; i++)
-			{
+			for (int i = 0; i < rv.cam_pk_size; i++) {
 				if (!client.ReceiveBy(rv.cam_pk, endSrcTar)) [[unlikely]] { break; }
-				recv_camera_packets.push(std::move(rv.cam_pk));
+				{
+					std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+					auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+					if (chosen_user != ui.room_user.chosen_users.end()) {
+						chosen_user->second->recv_camera_packets.push(std::move(rv.cam_pk));
+					}
+				}
+				//recv_camera_packets.push(std::move(rv.cam_pk));
 			}
 		}
 	}
@@ -489,6 +501,8 @@ void ClientApp::Send() {
 	ui.camera.encode.wait_wh.acquire();
 	const int cam_w = ui.camera.encode.width;
 	const int cam_h = ui.camera.encode.height;
+
+	std::vector<user::id_t> buf_chosen_users;
 
 	util::Timer timer;
 	timer.restart();
@@ -560,7 +574,16 @@ void ClientApp::Send() {
 				user.total_words_msg.buf.push_back(logger.name + ": " + buf);
 			}
 		}
-		client.Send(get(ui.room_user.chosen_user));
+		{
+			std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+			client.Send<uint64_t>(ui.room_user.chosen_users.size());
+			buf_chosen_users.clear();
+			for (const auto& chosen_user : ui.room_user.chosen_users) {
+				buf_chosen_users.push_back(chosen_user.first);
+			}
+			client.Send(buf_chosen_users.data(), sizeof(buf_chosen_users[0]) * buf_chosen_users.size());
+			//client.Send(get(ui.room_user.chosen_user)); // 先send数量再send chosen_user
+		}
 		client.Send(share_video);
 		if (share_video) {
 			client.Send(sc_w);
@@ -748,30 +771,108 @@ void ClientApp::ScreenCaptureEncode() {
 	}
 }
 
+void ClientApp::CameraDecode() {
+	//DEFER{ [this]() {
+	//	p_show.wait_threads.release();
+	//} };
+	//H264Decoder decoder;
+	//std::vector<H264Decoder> decoders;
+	std::vector<std::shared_ptr<RecvDataEx>> buf_data;
+
+	std::vector<std::vector<uint8_t>> pkts(recv_camera_packets_count);
+
+	//auto last_time = std::chrono::steady_clock::now();
+	while (!p_show.ended() && !clientClosed()) {
+		std::this_thread::sleep_for(1ms);
+		//const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+		//	std::chrono::duration<boost::float64_t>(1.0 / get(ui.video.fps))
+		//);
+		//auto next_frame = last_time + target_interval;
+		//std::this_thread::sleep_until(next_frame);
+		//last_time = next_frame;
+
+		{
+			std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+			assert(buf_data.empty());
+			for (const auto& ptr : ui.room_user.chosen_users) {
+				buf_data.push_back(ptr.second);
+			}
+		}
+
+		//decoders.resize(buf_data.size());
+		for (size_t i = 0;i < buf_data.size();++i) {
+			auto& data = buf_data[i];
+			auto& recv_camera_packets = data->recv_camera_packets;
+			auto& total_camera_frames = data->total_camera_frames;
+			auto& decoder = data->cameraDecoder;
+			//auto& decoder = decoders[i];
+			const size_t pkts_count = recv_camera_packets.pop(pkts.data(), recv_camera_packets_count);
+			for (size_t i = 0; i < pkts_count; ++i) {
+				auto frames = decoder.DecodePacket(pkts[i]);
+				for (auto& frame : frames) {
+					total_camera_frames.push(std::move(frame));
+				}
+			}
+		}
+		buf_data.clear(); // clear right after use to make sure destruct immediatly
+	}
+}
+
 void ClientApp::ScreenDecode() {
 	//DEFER{ [this]() {
 	//	p_show.wait_threads.release();
 	//} };
-	H264Decoder decoder;
+	//std::vector<H264Decoder> decoders;
+	std::vector<std::shared_ptr<RecvDataEx>> buf_data;
+
 	std::vector<std::vector<uint8_t>> pkts(recv_screen_packets_count);
+
+	//auto last_time = std::chrono::steady_clock::now();
 	while (!p_show.ended() && !clientClosed()) {
-		const size_t pkts_count = recv_screen_packets.pop(pkts.data(), recv_screen_packets_count);
-		for (size_t i = 0;i < pkts_count;++i) {
-			auto frames = decoder.DecodePacket(pkts[i]);
-			for (auto& frame : frames) {
-				auto frame_ptr = std::make_shared<ST::DecodedFrame>(std::move(frame));
-				if (ui.room_user.record_video) {
-					if (mtx_videoRecord.try_lock_shared()) {
-						DEFER([this]() { mtx_videoRecord.unlock_shared(); });
-						if (videoRecordFrame[1 ^ videoRecordFrameRecording].images.empty()) {
-							videoRecordFrame[1 ^ videoRecordFrameRecording].images.push_back(frame_ptr);
-							videoRecordFrame[1 ^ videoRecordFrameRecording].videoPtsUs = static_cast<int64_t>(videoRecordTimer.microseconds());
-						}
-					}
-				}
-				total_video_frames_v1.push(frame_ptr);
+		std::this_thread::sleep_for(1ms);
+		//const auto target_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+		//	std::chrono::duration<boost::float64_t>(1.0 / get(ui.video.fps))
+		//);
+		//auto next_frame = last_time + target_interval;
+		//std::this_thread::sleep_until(next_frame);
+		//last_time = next_frame;
+
+
+		{
+			std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+			assert(buf_data.empty());
+			for (const auto& ptr : ui.room_user.chosen_users) {
+				buf_data.push_back(ptr.second);
 			}
 		}
+
+		//decoders.resize(buf_data.size());
+		for (size_t i = 0;i < buf_data.size();++i) {
+			auto& data = buf_data[i];
+			auto& recv_screen_packets = data->recv_screen_packets;
+			auto& total_video_frames_v1 = data->total_video_frames_v1;
+			auto& decoder = data->videoDecoder;
+			//auto& decoder = decoders[i];
+
+			const size_t pkts_count = recv_screen_packets.pop(pkts.data(), recv_screen_packets_count);
+			for (size_t i = 0;i < pkts_count;++i) {
+				auto frames = decoder.DecodePacket(pkts[i]);
+				for (auto& frame : frames) {
+					auto frame_ptr = std::make_shared<ST::DecodedFrame>(std::move(frame));
+					if (getx(ui.room_user.record_video) && getx(ui.room_user.record_user) == data->user) {
+						if (mtx_videoRecord.try_lock_shared()) {
+							DEFER([this]() { mtx_videoRecord.unlock_shared(); });
+							if (videoRecordFrame[1 ^ videoRecordFrameRecording].images.empty()) {
+								videoRecordFrame[1 ^ videoRecordFrameRecording].images.push_back(frame_ptr);
+								videoRecordFrame[1 ^ videoRecordFrameRecording].videoPtsUs = static_cast<int64_t>(videoRecordTimer.microseconds());
+							}
+						}
+					}
+					total_video_frames_v1.push(frame_ptr);
+				}
+			}
+		}
+		buf_data.clear();
 	}
 }
 
@@ -825,7 +926,7 @@ void ClientApp::videoRecord() {
 		);
 		videoRecordFrame[videoRecordFrameRecording].restore();
 	}
-	videoRecorder.save(makeRecordPath());
+	videoRecorder.save(::makeRecordPath());
 	println("end!!!");
 }
 
@@ -946,7 +1047,7 @@ void ClientApp::audioMix()
 		{
 			std::lock_guard lock(plug.asr.mtx);
 			if (asrOn<false>()) {
-				asrPushData<false>(mixBuf);
+				asrPushData<false>(mixBuf.data(), realSamples);
 			}
 		}
 	}
@@ -978,10 +1079,16 @@ void ClientApp::restoreAfterShow() {
 }
 
 void ClientApp::initBeforeShow() {
-	set(ui.room_user.chosen_user, get(logger.id));
+	auto first_id = get(logger.id);
+	{
+		std::lock_guard lock{ ui.room_user.mtx_chosen_users };
+		ui.room_user.chosen_users.clear();
+		ui.room_user.chosen_users.emplace(get(logger.id), std::make_shared<RecvDataEx>(getx(logger.id)));
+	}
+	//set(ui.room_user.chosen_user, get(logger.id)); // chosen_users push logger.id
 	{
 		std::lock_guard lock2{ mtx_users };
-		auto [itr, first] = users.try_emplace(get(ui.room_user.chosen_user));
+		auto [itr, first] = users.try_emplace(first_id);
 		itr->second.name = logger.name;
 	}
 	
@@ -1302,6 +1409,16 @@ void ClientApp::asrLoad() {
 	// 防止上一次异常残留未释放
 	plug.asr.loader.free();
 
+	auto clearup = [this]() {
+		plug.asr.stream = nullptr;
+		plug.asr.open = nullptr;
+		plug.asr.push = nullptr;
+		plug.asr.poll = nullptr;
+		plug.asr.finish = nullptr;
+		plug.asr.reset = nullptr;
+		plug.asr.close = nullptr;
+	};
+
 	// 1. 加载 DLL
 	if (!plug.asr.loader.load((plug.asr.dir +  "/plugin_ASR.dll").c_str())) {
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
@@ -1319,6 +1436,7 @@ void ClientApp::asrLoad() {
 		plug.asr.loader.get(plug.asr.close, plugin::asr::name::asrClose);
 
 	if (!got_funcs) {
+		clearup();
 		plug.asr.loader.free();
 
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
@@ -1330,7 +1448,7 @@ void ClientApp::asrLoad() {
 	char error[512] = {};
 	int32_t rc = plug.asr.open((plug.asr.dir + "/model").c_str(), 0, &plug.asr.stream, error, sizeof(error));
 	if (rc != PLUGIN_ASR_OK || !plug.asr.stream) {
-		plug.asr.stream = nullptr;
+		clearup();
 		plug.asr.loader.free(); // 失败必须卸载
 		std::lock_guard ui_lk(plug.asr.ui.mtx);
 		plug.asr.ui.status = "ASR open failed: " + std::string(error);
@@ -1378,17 +1496,20 @@ void ClientApp::asrDownload() {
 }
 
 template<bool mtx>
-void ClientApp::asrPushData(std::vector<float>& audioFrames) {
+void ClientApp::asrPushData(const float* audioFrames, size_t count) {
 	static_assert(!mtx); // on purpose
 	//std::lock_guard lk(plug.asr.mtx);
 	if (plug.asr.stream && plug.asr.push) {
-		int32_t r = plug.asr.push(plug.asr.stream, audioFrames.data(),
-			static_cast<uint32_t>(audioFrames.size()));
+		int32_t r = plug.asr.push(plug.asr.stream, audioFrames, static_cast<uint32_t>(count));
 
 		if (r == PLUGIN_ASR_INVALID) {
 			std::lock_guard ui_lk(plug.asr.ui.mtx);
 			plug.asr.ui.status = "Push INVALID (audio data rejected)";
 		}
+		//else {
+		//	std::lock_guard ui_lk(plug.asr.ui.mtx);
+		//	plug.asr.ui.status.clear();
+		//}
 	}
 }
 
@@ -1409,10 +1530,10 @@ void ClientApp::translatorLoad(){
 	bool ok = plug.translator.loader.load((plug.translator.dir + "/plugin_Translator.dll").c_str());
 
 	auto clearup = [this]() {
-		plug.translator.Registor = nullptr;
-		plug.translator.unload = nullptr;
-		plug.translator.translate = nullptr;
 		plug.translator.close = nullptr;
+		plug.translator.translate = nullptr;
+		plug.translator.unload = nullptr;
+		plug.translator.Registor = nullptr;
 		plug.translator.loader.free();
 	};
 
@@ -1443,12 +1564,13 @@ void ClientApp::translatorLoad(){
 	plug.translator.error.clear();
 
 	translatorLoadDirections();
-	plug.translator.direction = plug.translator.directions.back();
+	if (!plug.translator.directions.empty()) {
+		plug.translator.direction = plug.translator.directions.front();
+	}
 	for (const auto& d : plug.translator.directions) {
-		char* error;
+		char* error{};
 		if(!plug.translator.Registor(d.src.c_str(), d.tar.c_str(), d.model_dir.c_str(), &error)) {
-			std::lock_guard lock{ plug.translator.mtx_ui };
-			translatorSetError(error);
+			translatorSetError<true>(error);
 		}
 	}
 }
@@ -1456,17 +1578,19 @@ void ClientApp::translatorLoad(){
 void ClientApp::translatorDownload() {
 	std::lock_guard lock{ plug.translator.mtx }; // 如果卡在这，说明后台没释放
 	if (plug.translator.unload) {
-		char* error;
+		char* error{};
 		plug.translator.unload(plug.translator.direction.src.c_str(), plug.translator.direction.tar.c_str(), &error);
 	}
 	if (plug.translator.close) {
 		plug.translator.close();
 	}
-	plug.translator.Registor = nullptr;
-	plug.translator.translate = nullptr;
 	plug.translator.close = nullptr;
+	plug.translator.translate = nullptr;
+	plug.translator.unload = nullptr;
+	plug.translator.Registor = nullptr;
 	plug.translator.loader.free(); // 如果卡在这，说明 DLL 卸载卡住了
-	plug.translator.directions.reserve(0);
+	plug.translator.directions.clear();
+	plug.translator.directions.shrink_to_fit();
 }
 
 void ClientApp::translatorLoadDirections() {
@@ -1475,14 +1599,13 @@ void ClientApp::translatorLoadDirections() {
 		return;
 	}
 
-	// <plug.translator.dir>/models/tables.inl
+	// <plug.translator.dir>/models/tables.ini
 	std::filesystem::path modelsDir = std::filesystem::path(plug.translator.dir) / "models";
-	std::filesystem::path tablesPath = modelsDir / "tables.inl";
+	std::filesystem::path tablesPath = modelsDir / "tables.ini";
 
 	std::ifstream file(tablesPath);
 	if (!file.is_open()) {
-		std::lock_guard lock{ plug.translator.mtx_ui };
-		translatorSetError("Failed to open " + tablesPath.string());
+		translatorSetError<true>("Failed to open " + tablesPath.string());
 		return;
 	}
 
@@ -1500,33 +1623,32 @@ void ClientApp::translatorLoadDirections() {
 }
 
 void ClientApp::translateThread() {
-	char* out;
-	char* error;
-	std::string toBeTranslated;
+	char* out{};
+	char* error{};
+	Record<std::string> toBeTranslated{ "" };
 	TranslateDirection direction;
 	while (!p_show.ended() && !clientClosed() && translatorOn<true>()) {
 		std::this_thread::sleep_for(50ms);
 		std::lock_guard lock{ plug.translator.mtx };
-		if (plug.translator.translate) {
+		{
+			std::lock_guard lock{ plug.translator.mtx_ui };
+			toBeTranslated.update(plug.translator.toBeTranslated);
+		}
+		if (plug.translator.translate && toBeTranslated.changed()) {
 			{
 				std::lock_guard lock{ plug.translator.mtx_ui };
-				toBeTranslated = plug.translator.toBeTranslated;
 				direction = plug.translator.direction;
 			}
-			if (!plug.translator.translate(toBeTranslated.c_str(), direction.src.c_str(), direction.tar.c_str(), &out, &error)) {
-				std::lock_guard lock{ plug.translator.mtx_ui };
-				translatorSetError(error);
+			if (!plug.translator.translate(toBeTranslated.now.c_str(), direction.src.c_str(), direction.tar.c_str(), &out, &error)) {
+				translatorSetError<true>(error);
 			}
 			else {
 				std::lock_guard lock{ plug.translator.mtx_ui };
 				plug.translator.result = out;
 			}
 		}
-		else {
-			{
-				std::lock_guard lock{ plug.translator.mtx_ui };
-				translatorSetError("plug.translator.translate is nullptr");
-			}
+		else if (!plug.translator.translate) {
+			translatorSetError<true>("plug.translator.translate is nullptr");
 		}
 	}
 

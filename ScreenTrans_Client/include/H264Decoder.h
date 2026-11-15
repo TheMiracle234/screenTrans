@@ -24,6 +24,10 @@ namespace ST {
     public:
         H264Decoder();
         ~H264Decoder() { Destroy(); }
+        H264Decoder(const H264Decoder&) = delete;
+        H264Decoder& operator=(const H264Decoder&) = delete;
+        H264Decoder(H264Decoder&& other) noexcept;
+        H264Decoder& operator=(H264Decoder&& other) noexcept;
 
         std::vector<DecodedFrame> DecodePacket(std::vector<uint8_t>& packet);
         //std::vector<DecodedFrame> Flush();

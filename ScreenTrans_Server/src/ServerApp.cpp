@@ -3,6 +3,7 @@
 #include <ServerApp.hpp>
 #include <thread>
 #include <chrono>
+#include <sstream>
 using std::literals::chrono_literals::operator""ms;
 using std::literals::chrono_literals::operator""s;
 
@@ -40,6 +41,9 @@ void ServerApp::register_handle(std::optional<net::tcp::Client> c) {
 	}
 
 	auto audio_client = waitAudioConnection(user_id);
+	//if (!audio_client) {
+	//	println("audio_client connect error");
+	//}
 	assert(audio_client);
 	audio_connection_consumed = true;
 
@@ -234,7 +238,7 @@ std::optional<net::tcp::Client> ServerApp::waitAudioConnection(user::id_t id) {
 		// meaning that client.ReceiveBy(sync_connection) == false, and we need to find out whther audio_connection has been pushed
 		sync_error = true;
 		std::this_thread::sleep_for(500ms);
-		if (timer.seconds() > 5.0) { // assume audio connection not built(since audio connection built time should be << 5s)
+		if (timer.seconds() > 10.0) { // assume audio connection not built(since audio connection built time should be << 5s)
 			return {};
 		}
 	}
@@ -247,11 +251,27 @@ ServerApp::ServerApp() {
 
 }
 
-void ServerApp::run() {
-	uint16_t port;
-	print("input port to be set: ");
-	std::cin >> port;
-	net::tcp::Server server( net::tcp::Ip::Auto, port);
+int ServerApp::run(int argc, char** argv) {
+	if (argc != 3) {
+		println("usage:\n" << argv[0] << " wildcard_address port");
+		println("example: " << argv[0] <<" 0.0.0.0 8888");
+		return 1;
+	}
+
+	const char* bindAddress = argv[1];
+	uint16_t port = 0;
+
+	std::istringstream iss(argv[2]);
+	int parsed_port;
+	iss >> parsed_port;
+
+	if (iss.fail() || parsed_port <= 0 || parsed_port > 65535) {
+		std::cerr << "Error: Invalid port '" << argv[2] << "'. Port must be an integer between 1 and 65535." << std::endl;
+		return 1;
+	}
+	port = static_cast<uint16_t>(parsed_port);
+
+	net::tcp::Server server(net::tcp::Ip::Auto, port, bindAddress);
 	server.Listen();
 	println("waiting for the first client...");
 
@@ -261,9 +281,9 @@ void ServerApp::run() {
 		std::thread register_thread(&ServerApp::register_handle, this, std::move(c));
 		register_thread.detach();
 	}
+	return 0;
 }
 
-int main() {
-	ServerApp app{};
-	app.run();
+int main(int argc, char** argv) {
+	return ServerApp{}.run(argc, argv);
 }

@@ -69,7 +69,9 @@ void Room::threadSendMsg(User* clientMtx) {
 		bool has_words_msg;
 		user::id_t words_msg_target{};
 		char words_msg[words_msg_bytes];
-		user::id_t choose_user{};
+		uint64_t choose_user_count;
+		std::vector<user::id_t> choose_users;
+		//user::id_t choose_user{};
 		bool share_video{};
 		int32_t pk_size{};
 		int32_t video_w;
@@ -112,7 +114,9 @@ void Room::threadSendMsg(User* clientMtx) {
 			client->ReceiveBy(rv.words_msg_target);
 			client->ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
 		}
-		client->ReceiveBy(rv.choose_user);
+		client->ReceiveBy(rv.choose_user_count);
+		client->ReceiveBy(rv.choose_users, net::EndSrcTar{ rv.little_end ? net::End::little : net::End::big, net::End::native });
+		//client->ReceiveBy(rv.choose_user);
 		client->ReceiveBy(rv.share_video);
 		if (rv.share_video) {
 			client->ReceiveBy(rv.video_w);
@@ -149,14 +153,15 @@ void Room::threadSendMsg(User* clientMtx) {
 				}
 			}
 
-			if (!(flags & flag_clientChoiceRecorded) || (rv.choose_user != last_chosen_user)) {
-				{
-					std::lock_guard lock(m_mutex_choices);
-					m_choices_of[client->Id()] = rv.choose_user;
-				}
-				last_chosen_user = rv.choose_user;
-				flags |= flag_clientChoiceRecorded;
-			}
+			m_choices_of[client->Id()].insert(rv.choose_users.begin(), rv.choose_users.end());
+			//if (!(flags & flag_clientChoiceRecorded) || (rv.choose_user != last_chosen_user)) { // just =
+			//	{
+			//		std::lock_guard lock(m_mutex_choices);
+			//		m_choices_of[client->Id()] = rv.choose_user;
+			//	}
+			//	last_chosen_user = rv.choose_user;
+			//	flags |= flag_clientChoiceRecorded;
+			//}
 
 		}
 		{
@@ -167,8 +172,12 @@ void Room::threadSendMsg(User* clientMtx) {
 				std::lock_guard lock(cm->mtx_client);
 				Client* c = &cm->client;
 
-				Signal signal{ rv.little_end ? signal_littleEnd : 0 };
+				Signal signal{ rv.little_end ? signal_littleEnd : Signal(0) };
 				if (client->Closed()) [[unlikely]] {
+					{
+						std::lock_guard lock_choices(m_mutex_choices);
+						m_choices_of.erase(save_id);
+					}
 					c->Send(signal |= signal_closed);
 					c->Send(save_id);
 					closedSignalSent.store(true, std::memory_order_release);
@@ -178,8 +187,14 @@ void Room::threadSendMsg(User* clientMtx) {
 				bool choice_isnt_me;
 				{
 					std::shared_lock lock_choices(m_mutex_choices);
-					auto choice = m_choices_of.find(c->Id());
-					choice_isnt_me = choice == m_choices_of.end() || choice->second != rv.id;
+					auto choices = m_choices_of.find(c->Id());
+					if (choices != m_choices_of.end()) [[likely]] {
+						choice_isnt_me = choices->second.find(rv.id) == choices->second.end();
+					}
+					else {
+						choice_isnt_me = true;
+					}
+					//choice_isnt_me = choice == m_choices_of.end() || choice->second != rv.id;
 				}
 				if (choice_isnt_me) { c->Send(signal |= signal_choiceNotMatch); }
 				else				{ c->Send(signal |= signal_none); }

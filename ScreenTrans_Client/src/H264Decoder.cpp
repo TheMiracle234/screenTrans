@@ -12,6 +12,26 @@ namespace ST {
         }
     }
 
+    H264Decoder::H264Decoder(H264Decoder&& other) noexcept
+        : m_ctx(other.m_ctx), m_frame(other.m_frame), m_pkt(other.m_pkt), m_sws(other.m_sws),
+        m_last_width(other.m_last_width), m_last_height(other.m_last_height), m_last_fmt(other.m_last_fmt) {
+        other.m_ctx = nullptr;
+        other.m_frame = nullptr;
+        other.m_pkt = nullptr;
+        other.m_sws = nullptr;
+    }
+
+    H264Decoder& H264Decoder::operator=(H264Decoder&& other) noexcept {
+        if (this != &other) {
+            Destroy();
+            m_ctx = other.m_ctx; m_frame = other.m_frame; m_pkt = other.m_pkt; m_sws = other.m_sws;
+            m_last_width = other.m_last_width; m_last_height = other.m_last_height; m_last_fmt = other.m_last_fmt;
+            other.m_ctx = nullptr; other.m_frame = nullptr; other.m_pkt = nullptr; other.m_sws = nullptr;
+        }
+        return *this;
+    }
+
+
     bool H264Decoder::Initialize()
     {
         Destroy();
