@@ -122,6 +122,8 @@ inline ClientApp::Page ClientApp::Show() {
 		const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
 #endif
 
+		bool save_words_message{};
+		std::string words_message_tobesaved;
 
 		boost::float64_t d_time = 0;
 		float fps = 0;
@@ -221,15 +223,35 @@ inline ClientApp::Page ClientApp::Show() {
 					ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
 					if (ui.send.words_msg_target == user::public_target) {
 						std::lock_guard lock{ ui.send.total_words_msg.mtx };
-						for (const auto& msg : ui.send.total_words_msg.buf) {
-							ImGui::TextUnformatted(msg.c_str());
+						if (!save_words_message) {
+							for (const auto& msg : ui.send.total_words_msg.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+							}
+						}
+						else {
+							for (const auto& msg : ui.send.total_words_msg.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+								words_message_tobesaved += (msg + "\n");
+							}
+							::saveFile(::makeRecordPath("record/words_message", ".txt"), words_message_tobesaved.data(), words_message_tobesaved.size());
+							words_message_tobesaved.clear();
 						}
 					}
 					else {
 						std::lock_guard lock(mtx_users);
 						auto& msgs = users[get(ui.send.words_msg_target)].total_words_msg;
-						for (const auto& msg : msgs.buf) {
-							ImGui::TextUnformatted(msg.c_str());
+						if (!save_words_message) {
+							for (const auto& msg : msgs.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+							}
+						}
+						else {
+							for (const auto& msg : msgs.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+								words_message_tobesaved += (msg + "\n");
+							}
+							::saveFile(::makeRecordPath("record/words_message", ".txt"), words_message_tobesaved.data(), words_message_tobesaved.size());
+							words_message_tobesaved.clear();
 						}
 					}
 					ImGui::PopTextWrapPos();
@@ -242,6 +264,7 @@ inline ClientApp::Page ClientApp::Show() {
 						memcpy(ui.send.words_msg.buf, mid.words_msg_buf, sizeof(mid.words_msg_buf));
 						mid.words_msg_buf[0] = '\0';
 					}
+					save_words_message = ImGui::Button("save");
 
 					ImGui::TreePop();
 				}// message
@@ -607,7 +630,7 @@ inline ClientApp::Page ClientApp::Show() {
 
 							ImGui::BeginChild("##translate", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
 							ImGui::PushTextWrapPos(0.0f);
-
+							
 							if (!asrOn<true>()) {
 								translatorSetError<true>("load asr before load translator");
 							}

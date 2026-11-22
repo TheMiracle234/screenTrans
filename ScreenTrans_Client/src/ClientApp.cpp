@@ -496,11 +496,11 @@ void ClientApp::Send() {
 	//};
 
 	ui.video.encode.wait_wh.acquire();
-	const int sc_w = ui.video.encode.width;
-	const int sc_h = ui.video.encode.height;
+	const int32_t sc_w = ui.video.encode.width;
+	const int32_t sc_h = ui.video.encode.height;
 	ui.camera.encode.wait_wh.acquire();
-	const int cam_w = ui.camera.encode.width;
-	const int cam_h = ui.camera.encode.height;
+	const int32_t cam_w = ui.camera.encode.width;
+	const int32_t cam_h = ui.camera.encode.height;
 
 	std::vector<user::id_t> buf_chosen_users;
 
@@ -876,26 +876,6 @@ void ClientApp::ScreenDecode() {
 	}
 }
 
-// 生成 "record/2026-10-24_143052.mp4"
-static inline std::string makeRecordPath() {
-	using namespace std::chrono;
-	auto now = system_clock::now();
-	auto t = floor<seconds>(now);
-	auto zt = zoned_time{ current_zone(), t };     // 本地时区
-	auto local = zt.get_local_time();
-	auto ymd = year_month_day{ floor<days>(local) };
-	auto tod = hh_mm_ss<seconds>{ local - floor<days>(local) };
-
-	std::string path = std::format("record/video-{:04}-{:02}-{:02}_{:02}-{:02}-{:02}.mp4",
-		int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()),
-		tod.hours().count(), tod.minutes().count(), tod.seconds().count());
-
-	// 顺手确保目录存在
-	std::error_code ec;
-	std::filesystem::create_directories("record", ec);
-	return path;
-}
-
 void ClientApp::initVideoRecord() {
 	videoRecordTimer.restart();
 	recordAudioSamples = 0;
@@ -926,7 +906,7 @@ void ClientApp::videoRecord() {
 		);
 		videoRecordFrame[videoRecordFrameRecording].restore();
 	}
-	videoRecorder.save(::makeRecordPath());
+	videoRecorder.save(::makeRecordPath("record/video", ".mp4"));
 	println("end!!!");
 }
 
