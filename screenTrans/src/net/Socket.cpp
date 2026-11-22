@@ -9,6 +9,7 @@ namespace net {
 		m_id(id)
 	{ 
 		assert(started == true);
+		if (!set_tcp_nodelay(m_id)) [[unlikely]] { std::cerr << "NODELAY failed\n"; }
 	}
 
 	Socket::Socket(Socket&& other) noexcept {

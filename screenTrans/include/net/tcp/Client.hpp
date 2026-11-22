@@ -51,11 +51,17 @@ namespace net {
     };
 
     template<typename T, typename Fn>
-    requires std::is_trivially_copyable_v<T>
+        requires std::is_trivially_copyable_v<T>
     inline void recursive_apply(T& value, Fn&& func) {
-        if constexpr (CNumberEnum<T>) {
+        if constexpr (std::is_array_v<T>) {
+            for (auto& elem : value) {
+                recursive_apply(elem, func);
+            }
+        }
+        else if constexpr (CNumberEnum<T>) {
             value = std::invoke(func, value);
         }
+        // 3. 普通聚合体：交给 PFR 遍历字段
         else if constexpr (std::is_aggregate_v<T>) {
             boost::pfr::for_each_field(value, [&](auto& field) {
                 recursive_apply(field, func);

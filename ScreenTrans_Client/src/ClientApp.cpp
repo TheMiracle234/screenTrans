@@ -323,36 +323,31 @@ void ClientApp::Receive() {
 	//}};
 
 	struct {
-		Signal signals{};
-		user::id_t id{ user::invalid_id };
-		char other_name[name_bytes];
-		bool is_host_from_server{};
-		uint32_t room_passwd{};
-		s_HostPower hostPower{
-			.is_host_from_client{},
-			.allow_asr{},
-			.allow_translator{},
-			.wanna_kick_off{},
-		};
-		//bool is_host_from_client{};
-		//user::id_t wanna_kick_off{};
-		//bool mute_all_once{};
-		//bool mute_all_keep{};
-		//bool share_audio{};
-		//std::vector<float> audioFrames{};
-		bool has_words_msg{};
-		user::id_t words_msg_target{};
-		char words_msg[words_msg_bytes];
-		bool share_video{};
-		int32_t pk_size{};
-		int32_t video_w;
-		int32_t video_h;
+		s_Msg fixed;
+		//Signal signals{};
+		//user::id_t id{ user::invalid_id };
+		//char other_name[name_bytes];
+		//bool is_host_from_server{};
+		//uint32_t room_passwd{};
+		//s_HostPower hostPower{
+		//	.is_host_from_client{},
+		//	.allow_asr{},
+		//	.allow_translator{},
+		//	.wanna_kick_off{},
+		//};
+		//bool has_words_msg{};
+		//user::id_t words_msg_target{};
+		//char words_msg[words_msg_bytes];
+		//bool share_video{};
+		//int32_t pk_size{};
+		//int32_t video_w;
+		//int32_t video_h;
 		std::vector<uint8_t> pk{};
 
-		bool share_camera{};
-		int32_t cam_pk_size{};
-		int32_t cam_w;
-		int32_t cam_h;
+		//bool share_camera{};
+		//int32_t cam_pk_size{};
+		//int32_t cam_w;
+		//int32_t cam_h;
 		std::vector<uint8_t> cam_pk{};
 
 		void restore() {
@@ -361,20 +356,25 @@ void ClientApp::Receive() {
 
 	while (!p_show.ended() && !clientClosed()) {
 		rv.restore();
-		bool recv_ok{true};
-		if (!client.ReceiveBy(rv.signals) ||  
-			!client.ReceiveBy(rv.id)) [[unlikely]] 
-		{
-			break;
+		//bool recv_ok{true};
+		if (!client.ReceiveBy(&rv.fixed, sizeof(rv.fixed))) {
+			break; 
 		}
-		if (rv.signals & signal_closed) [[unlikely]] {
+		s_MsgNtoh(rv.fixed);
+
+		//if (!client.ReceiveBy(rv.signals) ||  
+		//	!client.ReceiveBy(rv.id)) [[unlikely]] 
+		//{
+		//	break;
+		//}
+		if (rv.fixed.signal & signal_closed) [[unlikely]] {
 			{
 				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
 				std::lock_guard lock_users(mtx_users);
-				users.erase(rv.id);
+				users.erase(rv.fixed.id);
 				//auto count = std::erase_if(users, [&](auto& user) { return user.first == rv.id;});
 
-				ui.room_user.chosen_users.erase(rv.id);
+				ui.room_user.chosen_users.erase(rv.fixed.id);
 				if (ui.room_user.chosen_users.empty()) {
 					ui.room_user.chosen_users.emplace(getx(logger.id), std::make_shared<RecvDataEx>(getx(logger.id)));
 				}
@@ -383,81 +383,79 @@ void ClientApp::Receive() {
 			continue;
 		}
 
-		client.ReceiveBy(rv.other_name, sizeof(rv.other_name));
-		if (!client.ReceiveBy(rv.is_host_from_server)) [[unlikely]] { break; }
-		if (rv.is_host_from_server && get(logger.id) == rv.id) {
-			if (!client.ReceiveBy(rv.room_passwd)) [[unlikely]] { break; }
-			set(ui.room_user.host.room_passwd, rv.room_passwd);
+		//client.ReceiveBy(rv.other_name, sizeof(rv.other_name));
+		//if (!client.ReceiveBy(rv.is_host_from_server)) [[unlikely]] { break; }
+		if (rv.fixed.is_host_from_server && get(logger.id) == rv.fixed.id) {
+			//if (!client.ReceiveBy(rv.room_passwd)) [[unlikely]] { break; }
+			set(ui.room_user.host.room_passwd, rv.fixed.passwd);
 		}
-		if (!client.ReceiveBy(&rv.hostPower, sizeof(rv.hostPower))) { break; }
-		net::recursive_apply(rv.hostPower, net::NetworkToHost{});
+		//if (!client.ReceiveBy(&rv.hostPower, sizeof(rv.hostPower))) { break; }
+		//net::recursive_apply(rv.hostPower, net::NetworkToHost{});
 		//if (!client.ReceiveBy(rv.is_host_from_client)) [[unlikely]] { break; }
 		//if (rv.is_host_from_client) {
 		//	client.ReceiveBy(rv.wanna_kick_off);
 		//}
 
-		if (!client.ReceiveBy(rv.has_words_msg)) [[unlikely]] { break; }
-		if (rv.has_words_msg) [[unlikely]] {
-			client.ReceiveBy(rv.words_msg_target);
-			if (rv.words_msg_target == user::public_target) {
-				client.ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
+		//if (!client.ReceiveBy(rv.has_words_msg)) [[unlikely]] { break; }
+		if (rv.fixed.has_words_msg) [[unlikely]] {
+			//client.ReceiveBy(rv.words_msg_target);
+			if (rv.fixed.words_msg_target == user::public_target) {
+				//client.ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
 				{
 					std::lock_guard lock0(mtx_users);
 					std::lock_guard lock1(ui.send.total_words_msg.mtx);
-					ui.send.total_words_msg.buf.push_back(users[rv.id].name + ": " + rv.words_msg);
+					ui.send.total_words_msg.buf.push_back(users[rv.fixed.id].name + ": " + rv.fixed.words_msg.buf);
 				}
 			}
-			else if (rv.words_msg_target == logger.id) {
-				client.ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
+			else if (rv.fixed.words_msg_target == logger.id) {
+				//client.ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
 				{
 					std::lock_guard lock(mtx_users);
-					users[rv.id].total_words_msg.buf.push_back(users[rv.id].name + ": " + rv.words_msg);
+					users[rv.fixed.id].total_words_msg.buf.push_back(users[rv.fixed.id].name + ": " + rv.fixed.words_msg.buf);
 				}
 			}
 		}
 
-		if (!client.ReceiveBy(rv.share_video)) [[unlikely]] { break; }
+		//if (!client.ReceiveBy(rv.share_video)) [[unlikely]] { break; }
 
-		if (rv.hostPower.is_host_from_client) {
-			if (rv.hostPower.wanna_kick_off == get(logger.id)) [[unlikely]] {
+		if (rv.fixed.is_host_from_client) {
+			if (rv.fixed.wanna_kick_off == get(logger.id)) [[unlikely]] {
 				p_show.setEnd(true, ShowPara::End::kickOff);
 			}
-			set(ui.plugin.allow_asr, rv.hostPower.allow_asr);
-			set(ui.plugin.allow_translator, rv.hostPower.allow_translator);
+			set(ui.plugin.allow_asr, rv.fixed.allow_asr);
+			set(ui.plugin.allow_translator, rv.fixed.allow_translator);
 		}
 		{
 			std::lock_guard lock(mtx_users);
-			auto [itr, first] = users.try_emplace(rv.id);
-			itr->second.name = rv.other_name;
+			auto [itr, first] = users.try_emplace(rv.fixed.id);
+			itr->second.name = rv.fixed.name.buf;
 			auto& user = itr->second;
-			set(user.is_host, rv.is_host_from_server);
-			set(user.share_video, rv.share_video);
+			set(user.is_host, rv.fixed.is_host_from_server);
+			set(user.share_video, rv.fixed.share_video);
+			set(user.share_camera, rv.fixed.share_camera);
 		}
 
-		if (rv.signals & signal_choiceNotMatch) { continue; }
+		if (rv.fixed.signal & signal_choiceNotMatch) { continue; }
 
 		// each packet
-		if (rv.share_video) {
-			if (!client.ReceiveBy(rv.pk_size)) [[unlikely]] { break; }
-			client.ReceiveBy(rv.video_w);
-			client.ReceiveBy(rv.video_h);
+		if (rv.fixed.share_video) {
+			//if (!client.ReceiveBy(rv.pk_size)) [[unlikely]] { break; }
+			//client.ReceiveBy(rv.video_w);
+			//client.ReceiveBy(rv.video_h);
 			{
 				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
-				auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+				auto chosen_user = ui.room_user.chosen_users.find(rv.fixed.id);
 				if (chosen_user != ui.room_user.chosen_users.end()) {
-					set(chosen_user->second->rv_sc_orig_w, rv.video_w);
-					set(chosen_user->second->rv_sc_orig_h, rv.video_h);
+					set(chosen_user->second->rv_sc_orig_w, rv.fixed.sc_w);
+					set(chosen_user->second->rv_sc_orig_h, rv.fixed.sc_h);
 				}
 			}
-			const net::EndSrcTar endSrcTar{
-				rv.signals & signal_littleEnd ? net::End::little : net::End::big, 
-				net::End::native
-			};
-			for (int i = 0;i < rv.pk_size;++i) {
-				if (!client.ReceiveBy(rv.pk, endSrcTar)) [[unlikely]] { break; }
+			//const net::EndSrcTar endSrcTar{ rv.fixed.end,  net::End::native };
+			for (int i = 0;i < rv.fixed.pk_size;++i) {
+				if (!client.ReceiveBy(rv.pk, { rv.fixed.end,  net::End::native })) [[unlikely]] { break; }
 				{
 					std::lock_guard lock{ ui.room_user.mtx_chosen_users };
-					auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+					auto chosen_user = ui.room_user.chosen_users.find(rv.fixed.id);
 					if (chosen_user != ui.room_user.chosen_users.end()) {
 						chosen_user->second->recv_screen_packets.push(std::move(rv.pk));
 					}
@@ -466,34 +464,34 @@ void ClientApp::Receive() {
 			}
 		}
 
-		if (!client.ReceiveBy(rv.share_camera)) [[unlikely]] { break; }
-		{
-			std::lock_guard lock(mtx_users);
-			set(users[rv.id].share_camera, rv.share_camera);
-		}
-		if (rv.share_camera) {
-			if (!client.ReceiveBy(rv.cam_pk_size)) [[unlikely]] { break; }
-			client.ReceiveBy(rv.cam_w);
-			client.ReceiveBy(rv.cam_h);
+		//if (!client.ReceiveBy(rv.share_camera)) [[unlikely]] { break; }
+		//{
+		//	std::lock_guard lock(mtx_users);
+		//	set(users[rv.fixed.id].share_camera, rv.fixed.share_camera);
+		//}
+		if (rv.fixed.share_camera) {
+			//if (!client.ReceiveBy(rv.cam_pk_size)) [[unlikely]] { break; }
+			//client.ReceiveBy(rv.cam_w);
+			//client.ReceiveBy(rv.cam_h);
 			//set(rv_cam_orig_w, rv.cam_w);
 			//set(rv_cam_orig_h, rv.cam_h);
 			{
 				std::lock_guard lock_chosen{ ui.room_user.mtx_chosen_users };
-				auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+				auto chosen_user = ui.room_user.chosen_users.find(rv.fixed.id);
 				if (chosen_user != ui.room_user.chosen_users.end()) {
-					set(chosen_user->second->rv_cam_orig_w, rv.cam_w);
-					set(chosen_user->second->rv_cam_orig_h, rv.cam_h);
+					set(chosen_user->second->rv_cam_orig_w, rv.fixed.cam_w);
+					set(chosen_user->second->rv_cam_orig_h, rv.fixed.cam_h);
 				}
 			}
-			const net::EndSrcTar endSrcTar{
-				rv.signals & signal_littleEnd ? net::End::little : net::End::big,
-				net::End::native
-			};
-			for (int i = 0; i < rv.cam_pk_size; i++) {
-				if (!client.ReceiveBy(rv.cam_pk, endSrcTar)) [[unlikely]] { break; }
+			//const net::EndSrcTar endSrcTar{
+			//	rv.signals & signal_littleEnd ? net::End::little : net::End::big,
+			//	net::End::native
+			//};
+			for (int i = 0; i < rv.fixed.cam_pk_size; i++) {
+				if (!client.ReceiveBy(rv.cam_pk, { rv.fixed.end, net::End::native })) [[unlikely]] { break; }
 				{
 					std::lock_guard lock{ ui.room_user.mtx_chosen_users };
-					auto chosen_user = ui.room_user.chosen_users.find(rv.id);
+					auto chosen_user = ui.room_user.chosen_users.find(rv.fixed.id);
 					if (chosen_user != ui.room_user.chosen_users.end()) {
 						chosen_user->second->recv_camera_packets.push(std::move(rv.cam_pk));
 					}
@@ -517,6 +515,8 @@ void ClientApp::Send() {
 	const int32_t cam_h = ui.camera.encode.height;
 
 	std::vector<user::id_t> buf_chosen_users;
+
+	s_Msg clientSend;
 
 	util::Timer timer;
 	timer.restart();
@@ -548,46 +548,38 @@ void ClientApp::Send() {
 
 		bool is_host_from_client = isHost<true>();
 		assert(get(logger.id) != user::invalid_id);
-		client.Send(net::End::native == net::End::little);
-		client.Send(get(logger.id));
+
+		clientSend.end = net::End::native;
+		clientSend.id = get(logger.id);
+
+		//client.Send(net::End::native == net::End::little);
+		//client.Send(get(logger.id));
 		{
 			std::lock_guard lock(logger.mtx_name);
-			const auto size = logger.name.size();
-			logger.name.resize(name_bytes);
-			client.Send(logger.name.data(), logger.name.size());
-			logger.name.resize(size);
+			//const auto size = logger.name.size();
+			//logger.name.resize(name_bytes);
+			memcpy(clientSend.name.buf, logger.name.data(), sizeof(logger.name.data() + 1));
+			//client.Send(logger.name.data(), logger.name.size());
+			//logger.name.resize(size);
 		}
-		s_HostPower hostPower{
-			.is_host_from_client = is_host_from_client,
-			.allow_asr = get(ui.room_user.host.allow_asr),
-			.allow_translator = get(ui.room_user.host.allow_translator),
-			.set_passwd = get(ui.room_user.host.set_room_passwd),
-			.wanna_kick_off = get(ui.room_user.host.wanna_kick_off),
-			.transfer_host = get(ui.room_user.host.transfer_host),
-		};
+		clientSend.is_host_from_client = is_host_from_client;
+		clientSend.allow_asr = get(ui.room_user.host.allow_asr);
+		clientSend.allow_translator = get(ui.room_user.host.allow_translator);
+		clientSend.passwd = get(ui.room_user.host.set_room_passwd);
+		clientSend.wanna_kick_off = get(ui.room_user.host.wanna_kick_off);
+		clientSend.transfer_host = get(ui.room_user.host.transfer_host);
 		set(ui.room_user.host.set_room_passwd, Room::invalid_passwd);
 		set(ui.room_user.host.wanna_kick_off, user::invalid_id);
 		set(ui.room_user.host.transfer_host, user::invalid_id);
-		net::recursive_apply(hostPower, net::HostToNetwork{});
-		client.Send(&hostPower, sizeof(hostPower));
-		//client.Send(is_host_from_client);
-		//if (is_host_from_client) {
-		//	client.Send(get(ui.room_user.host.set_room_passwd));
-		//	set(ui.room_user.host.set_room_passwd, Room::invalid_passwd);
-		//	client.Send(get(ui.room_user.host.wanna_kick_off));
-		//	set(ui.room_user.host.wanna_kick_off, user::invalid_id);
-		//	client.Send(get(ui.room_user.host.transfer_host));
-		//	set(ui.room_user.host.transfer_host, user::invalid_id);
-		//	//client.Send(get(ui.room_user.host.mute_all_once));
-		//	//set(ui.room_user.host.mute_all_once, false);
-		//	//client.Send(get(ui.room_user.host.mute_all_keep));
-		//}
+		//net::recursive_apply(hostPower, net::HostToNetwork{});
+		//client.Send(&hostPower, sizeof(hostPower));
 		bool has_words_msg;
 		{
 			std::lock_guard lock(ui.send.words_msg.mtx);
 			has_words_msg = ui.send.words_msg.buf[0] != '\0';
 		}
-		client.Send(has_words_msg);
+		clientSend.has_words_msg = has_words_msg;
+		//client.Send(has_words_msg);
 		if (has_words_msg) [[unlikely]] {
 			user::id_t target = get(ui.send.words_msg_target);
 			char buf[sizeof(ui.send.words_msg.buf)];
@@ -596,17 +588,36 @@ void ClientApp::Send() {
 				memcpy(buf, ui.send.words_msg.buf, sizeof(buf));
 				ui.send.words_msg.buf[0] = '\0';
 			}
-			client.Send(target);
-			client.Send(buf, sizeof(buf));
+			clientSend.words_msg_target = target;
+			memcpy(clientSend.words_msg.buf, buf, sizeof(buf));
+			//client.Send(target);
+			//client.Send(buf, sizeof(buf));
 			if (target != user::public_target) {
 				std::lock_guard lock(mtx_users);
 				auto& user = users[target];
 				user.total_words_msg.buf.push_back(logger.name + ": " + buf);
 			}
 		}
+		clientSend.share_video = share_video;
+		clientSend.sc_w = sc_w;
+		clientSend.sc_h = sc_h;
+		clientSend.pk_size = pk_size;
+
+		bool share_camera = get(ui.send.share_camera);
+		std::vector<std::vector<uint8_t>> cam_packets(send_camera_packets_count);
+		int32_t cam_pk_size = static_cast<int32_t>(send_camera_packets.pop(cam_packets.data(), send_camera_packets_count));
+
+		clientSend.share_camera = share_camera;
+		clientSend.cam_w = cam_w;
+		clientSend.cam_h = cam_h;
+		clientSend.cam_pk_size = cam_pk_size;
+
+		s_MsgHton(clientSend);
+		client.Send(&clientSend, sizeof(clientSend));
+
 		{
 			std::lock_guard lock{ ui.room_user.mtx_chosen_users };
-			client.Send<uint64_t>(ui.room_user.chosen_users.size());
+			//client.Send<uint64_t>(ui.room_user.chosen_users.size());
 			buf_chosen_users.clear();
 			for (const auto& chosen_user : ui.room_user.chosen_users) {
 				buf_chosen_users.push_back(chosen_user.first);
@@ -614,11 +625,12 @@ void ClientApp::Send() {
 			client.Send(buf_chosen_users.data(), sizeof(buf_chosen_users[0]) * buf_chosen_users.size());
 			//client.Send(get(ui.room_user.chosen_user)); // 先send数量再send chosen_user
 		}
-		client.Send(share_video);
+
+		//client.Send(share_video);
 		if (share_video) {
-			client.Send(sc_w);
-			client.Send(sc_h);
-			client.Send(pk_size);
+			//client.Send(sc_w);
+			//client.Send(sc_h);
+			//client.Send(pk_size);
 			for (size_t i = 0;i < pk_size;++i) {
 				auto& packet = packets[i];
 				//client.Send(packet.data(), packet.size());
@@ -626,15 +638,11 @@ void ClientApp::Send() {
 			}
 		}
 
-		bool share_camera = get(ui.send.share_camera);
-		std::vector<std::vector<uint8_t>> cam_packets(send_camera_packets_count);
-		int32_t cam_pk_size = static_cast<int32_t>(send_camera_packets.pop(cam_packets.data(), send_camera_packets_count));
-
-		client.Send(share_camera);
+		//client.Send(share_camera);
 		if (share_camera){
-			client.Send(cam_w);
-			client.Send(cam_h);
-			client.Send(cam_pk_size);
+			//client.Send(cam_w);
+			//client.Send(cam_h);
+			//client.Send(cam_pk_size);
 			for (int32_t i = 0; i < cam_pk_size; i++){
 				client.Send(cam_packets[i]);
 			}

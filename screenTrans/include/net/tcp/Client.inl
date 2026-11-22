@@ -111,7 +111,7 @@ namespace tcp {
 	}
 
 	inline Client::Client(Ip ip_version) :
-		skt{ invalid_socket }
+		skt{ }
 #ifndef NDEBUG
 		, family_{ ip_version }
 #endif
