@@ -57,11 +57,17 @@ void Room::threadSendMsg(User* clientMtx) {
 	struct {
 		bool little_end{};
 		user::id_t id{};
-		std::string name{};
-		bool is_host_from_client{};
-		uint32_t set_passwd{ Room::invalid_passwd };
-		user::id_t wanna_kick_off{};
-		user::id_t transfer_host{};
+		char name[name_bytes];
+		s_HostPower hostPower{
+			.is_host_from_client{},
+			.set_passwd{ Room::invalid_passwd },
+			.wanna_kick_off{},
+			.transfer_host{},
+		};
+		//bool is_host_from_client{};
+		//uint32_t   set_passwd{ Room::invalid_passwd };
+		//user::id_t wanna_kick_off{};
+		//user::id_t transfer_host{};
 		//bool mute_all_once{};
 		//bool mute_all_keep{};
 		//bool share_audio{};
@@ -96,15 +102,17 @@ void Room::threadSendMsg(User* clientMtx) {
 
 		client->ReceiveBy(rv.little_end);
 		client->ReceiveBy(rv.id);
-		client->ReceiveBy(rv.name);
-		client->ReceiveBy(rv.is_host_from_client);
-		if (rv.is_host_from_client) {
-			client->ReceiveBy(rv.set_passwd);
-			client->ReceiveBy(rv.wanna_kick_off);
-			client->ReceiveBy(rv.transfer_host);
-			//client->ReceiveBy(rv.mute_all_once);
-			//client->ReceiveBy(rv.mute_all_keep);
-		}
+		client->ReceiveBy(rv.name, sizeof(rv.name));
+		client->ReceiveBy(&rv.hostPower, sizeof(rv.hostPower));
+		net::recursive_apply(rv.hostPower, net::NetworkToHost{});
+		//client->ReceiveBy(rv.is_host_from_client);
+		//if (rv.is_host_from_client) {
+		//	client->ReceiveBy(rv.set_passwd);
+		//	client->ReceiveBy(rv.wanna_kick_off);
+		//	client->ReceiveBy(rv.transfer_host);
+		//	//client->ReceiveBy(rv.mute_all_once);
+		//	//client->ReceiveBy(rv.mute_all_keep);
+		//}
 		//client->ReceiveBy(rv.share_audio);
 		//if (rv.share_audio) {
 		//	client->ReceiveBy(rv.audio_frames);
@@ -144,12 +152,12 @@ void Room::threadSendMsg(User* clientMtx) {
 
 		//std::vector<std::vector<uint8_t>> packets;
 		if (!client->Closed()) [[likely]] {
-			if (rv.is_host_from_client){
-				if (rv.set_passwd != Room::invalid_passwd && rv.set_passwd != this->passwd()) [[unlikely]] {
-					this->setPasswd(rv.set_passwd);
+			if (rv.hostPower.is_host_from_client){
+				if (rv.hostPower.set_passwd != Room::invalid_passwd && rv.hostPower.set_passwd != this->passwd()) [[unlikely]] {
+					this->setPasswd(rv.hostPower.set_passwd);
 				}
-				if (rv.transfer_host != user::invalid_id) [[unlikely]] {
-					this->setHost(rv.transfer_host);
+				if (rv.hostPower.transfer_host != user::invalid_id) [[unlikely]] {
+					this->setHost(rv.hostPower.transfer_host);
 				}
 			}
 
@@ -200,20 +208,21 @@ void Room::threadSendMsg(User* clientMtx) {
 				else				{ c->Send(signal |= signal_none); }
 
 				c->Send(rv.id);
-				c->Send(rv.name);
+				c->Send(rv.name, sizeof(rv.name));
 				c->Send(is_host_from_server);
 				if (is_host_from_server && c->Id() == client->Id()) {
 					c->Send(this->passwd());
 				}
-				c->Send(rv.is_host_from_client);
-				if (rv.is_host_from_client) {
-					if (is_host_from_server) [[likely]] {
-						c->Send(rv.wanna_kick_off);
-					}
-					else {
-						c->Send(user::invalid_id);
+
+				if (rv.hostPower.is_host_from_client) {
+					if (!is_host_from_server) [[unlikely]] {
+						rv.hostPower.wanna_kick_off = user::invalid_id;
 					}
 				}
+				//c->Send(rv.hostPower.is_host_from_client);
+				net::recursive_apply(rv.hostPower, net::HostToNetwork{});
+				c->Send(&rv.hostPower, sizeof(rv.hostPower));
+
 				c->Send(rv.has_words_msg);
 				if (rv.has_words_msg) [[unlikely]] {
 					c->Send(rv.words_msg_target);

@@ -11,7 +11,7 @@
 namespace net {
 
 #ifdef __GNUC__
-	template<CNumberType T>
+	template<CNumberEnum T>
 	[[nodiscard]] inline constexpr T byteswap(T value) noexcept
 	{
 		if constexpr (sizeof(T) == 1)
@@ -36,7 +36,7 @@ namespace net {
 		}
 	}
 #else
-	template<CNumberType T>
+	template<CNumberEnum T>
 	[[nodiscard]] inline constexpr T byteswap(T value) noexcept
 	{
 		if constexpr (sizeof(T) == 1)
@@ -66,7 +66,7 @@ namespace net {
 	// host <-> network
 	///////////////////////////////////////////////////////////
 
-	template<CNumberType T>
+	template<CNumberEnum T>
 	[[nodiscard]] inline constexpr T host_to_network(T value) noexcept
 	{
 		if constexpr (std::endian::native == std::endian::little)
@@ -79,7 +79,7 @@ namespace net {
 		}
 	}
 
-	template<CNumberType T>
+	template<CNumberEnum T>
 	[[nodiscard]] inline constexpr T network_to_host(T value) noexcept
 	{
 		if constexpr (std::endian::native == std::endian::little)
@@ -282,6 +282,12 @@ namespace tcp {
 		return Send(str.data(), str.size());
 	}
 
+	template<CNumberEnum T>
+	inline bool Client::Send(const T data) {
+		T net_data = host_to_network(data);
+		return Send(&net_data, sizeof(T));
+	}
+
 	inline std::optional<msg_size> Client::recv_bytes() {
 		msg_size net_len;
 		auto ret = recv_all(&net_len, static_cast<msg_size>(sizeof(msg_size)));
@@ -293,22 +299,6 @@ namespace tcp {
 	inline bool Client::recv_msg(void* data, msg_size bytes) {
 		auto ret = recv_all(data, bytes);
 		if (!ret) [[unlikely]] { return {}; }
-		return true;
-	}
-
-	template<CNumberType T>
-	inline bool Client::ReceiveBy(T& out) {
-		auto o_msg_bytes = recv_bytes();
-		if (!o_msg_bytes) { return false; }
-		msg_size msg_bytes = *o_msg_bytes;
-		if(sizeof(T) != msg_bytes) [[unlikely]] {
-			NET_SOCKET_SET_ERROR("receive not match");
-			return false;
-		}
-		if (!recv_msg(&out, msg_bytes)) [[unlikely]] {
-			return false;
-		}
-		out = network_to_host(out);
 		return true;
 	}
 
@@ -351,10 +341,31 @@ namespace tcp {
 		auto o_msg_bytes = recv_bytes();
 		if (!o_msg_bytes) [[unlikely]] { return false; }
 		const msg_size msg_bytes = *o_msg_bytes;
-		if (msg_bytes != bytes) [[unlikely]] { return false; }
+		if (msg_bytes != bytes) [[unlikely]] {
+			NET_SOCKET_SET_ERROR("receive not match");
+			return false;
+		}
 		if (!recv_msg(buf, msg_bytes)) [[unlikely]] { return false; }
 		return true;
 	}
+
+	template<CNumberEnum T>
+	inline bool Client::ReceiveBy(T& out) {
+		//auto o_msg_bytes = recv_bytes();
+		//if (!o_msg_bytes) { return false; }
+		//const msg_size msg_bytes = *o_msg_bytes;
+		//if (sizeof(T) != msg_bytes) [[unlikely]] {
+		//	NET_SOCKET_SET_ERROR("receive not match");
+		//	return false;
+		//}
+		//if (!recv_msg(&out, msg_bytes)) [[unlikely]] {
+		//	return false;
+		//}
+		bool res = ReceiveBy(&out, sizeof(out));
+		out = network_to_host(out);
+		return res;
+	}
+
 
 	inline std::optional<msg_size> Client::recv_all(void* buf, msg_size len) {
 #		ifdef _WIN32
@@ -396,13 +407,6 @@ namespace tcp {
 	//	assert(std::in_range<msg_size>(bytes));
 	//	return Send(data.data(), bytes);
 	//}
-
-	template<CNumberType T>
-	inline bool Client::Send(const T data) {
-		T net_data = host_to_network(data);
-		return Send(&net_data, sizeof(T));
-	}
-
 }
 }
 

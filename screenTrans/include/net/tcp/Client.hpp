@@ -3,6 +3,8 @@
 #ifndef NET_TCP_CLIENT_HPP
 #define NET_TCP_CLIENT_HPP
 
+#include <boost/pfr.hpp>
+
 #include "net/Socket.hpp"
 #include "net/tcp/Server.hpp"
 #include <optional>
@@ -22,14 +24,44 @@ namespace net {
     template<typename T>
     concept CNumberType = std::is_integral_v<T> || std::is_floating_point_v<T>;
 
-    template<CNumberType T>
+    template<typename T>
+    concept CNumberEnum = std::is_integral_v<T> || std::is_floating_point_v<T> || std::is_enum_v<T>;
+
+    template<CNumberEnum T>
     [[nodiscard]] inline constexpr T byteswap(T value) noexcept;
 
-    template<CNumberType T>
+    template<CNumberEnum T>
     [[nodiscard]] inline constexpr T host_to_network(T value) noexcept;
 
-    template<CNumberType T>
+    struct HostToNetwork {
+        template<typename T>
+        constexpr T operator()(T x) const noexcept {
+            return net::host_to_network(x);
+        }
+    };
+
+    template<CNumberEnum T>
     [[nodiscard]] inline constexpr T network_to_host(T value) noexcept;
+
+    struct NetworkToHost {
+        template<typename T>
+        constexpr T operator()(T x) const noexcept {
+            return net::network_to_host(x);
+        }
+    };
+
+    template<typename T, typename Fn>
+    requires std::is_trivially_copyable_v<T>
+    inline void recursive_apply(T& value, Fn&& func) {
+        if constexpr (CNumberEnum<T>) {
+            value = std::invoke(func, value);
+        }
+        else if constexpr (std::is_aggregate_v<T>) {
+            boost::pfr::for_each_field(value, [&](auto& field) {
+                recursive_apply(field, func);
+                });
+        }
+    }
 
     // 主模板：不是 vector
     template <typename T>
@@ -123,12 +155,12 @@ namespace net {
             //    requires CNumberType<typename vec::value_type>
             //bool Send(vec data);
 
-            template<CNumberType T>
+            template<CNumberEnum T>
             bool Send(const T data);
 
             bool Send(std::string_view str);
 
-            template<CNumberType T>
+            template<CNumberEnum T>
             bool ReceiveBy(T& out);
 
             bool ReceiveBy(std::string& out);

@@ -30,7 +30,6 @@
     <ClInclude Include="include\ClientApp.hpp" />
     <ClInclude Include="include\imgui_ex.hpp" />
     <ClInclude Include="include\CameraCapture.hpp" />
-    <ClInclude Include="include\compile_time.hpp" />
     <ClInclude Include="include\H264Decoder.h" />
     <ClInclude Include="include\H264Encoder.h" />
     <ClInclude Include="include\Mp4Recorder.hpp" />

@@ -245,27 +245,29 @@ void ClientApp::storeUiState() {
 	Ui buf_ui;
 
 	constexpr size_t BEGIN = __LINE__ + 1; // === BEGIN - 1 ===
-	memcpy(buf_ui.p1.ipv4, p1.ipv4, sizeof(p1.ipv4));//
-	buf_ui.p1.port = net::host_to_network(p1.port);
-	memcpy(buf_ui.p1.name, p1.name, sizeof(p1.ipv4));
-	buf_ui.p2.passwd = net::host_to_network(p2.passwd);//
-	buf_ui.p3.room_id = net::host_to_network(p3.room_id);//
-	buf_ui.p3.passwd = net::host_to_network(p3.passwd);//
-	buf_ui.send.fps = net::host_to_network(get(ui.send.fps));//
-	buf_ui.send.share_audio = net::host_to_network(get(ui.send.share_audio));
-	buf_ui.send.share_video = net::host_to_network(get(ui.send.share_video));
-	buf_ui.send.share_camera = net::host_to_network(get(ui.send.share_camera));
-	buf_ui.video.fps = net::host_to_network(get(ui.video.fps));//
-	buf_ui.video.encode.fps = net::host_to_network(get(ui.video.encode.fps));
-	buf_ui.video.encode.bitrate = net::host_to_network(get(ui.video.encode.bitrate));
-	buf_ui.video.encode.width = net::host_to_network(get(ui.video.encode.width));
-	buf_ui.video.encode.height = net::host_to_network(get(ui.video.encode.height));
-	buf_ui.camera.encode.fps = net::host_to_network(get(ui.camera.encode.fps));
-	buf_ui.camera.encode.bitrate = net::host_to_network(get(ui.camera.encode.bitrate));
-	buf_ui.camera.encode.width = net::host_to_network(get(ui.camera.encode.width));
-	buf_ui.camera.encode.height = net::host_to_network(get(ui.camera.encode.height));
-	buf_ui.room_user.host.set_room_passwd = net::host_to_network(get(ui.room_user.host.set_room_passwd));
-	buf_ui.room_user.host.mute_all_keep = net::host_to_network(get(ui.room_user.host.mute_all_keep));
+	memcpy(buf_ui.p1.ipv4,						p1.ipv4, sizeof(p1.ipv4));//
+	buf_ui.p1.port =							net::host_to_network(p1.port);
+	memcpy(buf_ui.p1.name,						p1.name, sizeof(p1.name));
+	buf_ui.p2.passwd =							net::host_to_network(p2.passwd);//
+	buf_ui.p3.room_id =							net::host_to_network(p3.room_id);//
+	buf_ui.p3.passwd =							net::host_to_network(p3.passwd);//
+	buf_ui.send.fps =							net::host_to_network(get(ui.send.fps));//
+	buf_ui.send.share_audio =					net::host_to_network(get(ui.send.share_audio));
+	buf_ui.send.share_video =					net::host_to_network(get(ui.send.share_video));
+	buf_ui.send.share_camera =					net::host_to_network(get(ui.send.share_camera));
+	buf_ui.video.fps =							net::host_to_network(get(ui.video.fps));//
+	buf_ui.video.encode.fps =					net::host_to_network(get(ui.video.encode.fps));
+	buf_ui.video.encode.bitrate =				net::host_to_network(get(ui.video.encode.bitrate));
+	buf_ui.video.encode.width =					net::host_to_network(get(ui.video.encode.width));
+	buf_ui.video.encode.height =				net::host_to_network(get(ui.video.encode.height));
+	buf_ui.camera.encode.fps =					net::host_to_network(get(ui.camera.encode.fps));
+	buf_ui.camera.encode.bitrate =				net::host_to_network(get(ui.camera.encode.bitrate));
+	buf_ui.camera.encode.width =				net::host_to_network(get(ui.camera.encode.width));
+	buf_ui.camera.encode.height =				net::host_to_network(get(ui.camera.encode.height));
+	buf_ui.room_user.host.set_room_passwd =		net::host_to_network(get(ui.room_user.host.set_room_passwd));
+	buf_ui.room_user.host.mute_all_keep =		net::host_to_network(get(ui.room_user.host.mute_all_keep));
+	buf_ui.room_user.host.allow_asr =			net::host_to_network(get(ui.room_user.host.allow_asr));
+	buf_ui.room_user.host.allow_translator =	net::host_to_network(get(ui.room_user.host.allow_translator));
 	constexpr size_t END = __LINE__; // === END ===
 	static_assert(END - BEGIN == count_basic_members<Ui>());
 
@@ -285,7 +287,7 @@ void ClientApp::loadUiState() {
 	constexpr size_t BEGIN = __LINE__ + 1; // === BEGIN -1 ===
 	memcpy( p1.ipv4,							buf_ui.p1.ipv4, sizeof(p1.ipv4));//
 			p1.port	=							net::network_to_host(buf_ui.p1.port);
-	memcpy( p1.name,							buf_ui.p1.name, sizeof(p1.ipv4));
+	memcpy( p1.name,							buf_ui.p1.name, sizeof(p1.name));
 			p2.passwd =							net::network_to_host(buf_ui.p2.passwd);//
 			p3.room_id =						net::network_to_host(buf_ui.p3.room_id);//
 			p3.passwd =							net::network_to_host(buf_ui.p3.passwd);//
@@ -304,6 +306,8 @@ void ClientApp::loadUiState() {
 	set(	ui.camera.encode.height,			net::network_to_host(buf_ui.camera.encode.height));
 	set(	ui.room_user.host.set_room_passwd,	net::network_to_host(buf_ui.room_user.host.set_room_passwd));
 	set(	ui.room_user.host.mute_all_keep,	net::network_to_host(buf_ui.room_user.host.mute_all_keep));
+	set(	ui.room_user.host.allow_asr,		net::network_to_host(buf_ui.room_user.host.allow_asr));
+	set(	ui.room_user.host.allow_translator,	net::network_to_host(buf_ui.room_user.host.allow_translator));
 	constexpr size_t END = __LINE__; // === END ===
 	static_assert(END - BEGIN == count_basic_members<Ui>());
 }
@@ -321,11 +325,17 @@ void ClientApp::Receive() {
 	struct {
 		Signal signals{};
 		user::id_t id{ user::invalid_id };
-		std::string other_name{};
+		char other_name[name_bytes];
 		bool is_host_from_server{};
 		uint32_t room_passwd{};
-		bool is_host_from_client{};
-		user::id_t wanna_kick_off{};
+		s_HostPower hostPower{
+			.is_host_from_client{},
+			.allow_asr{},
+			.allow_translator{},
+			.wanna_kick_off{},
+		};
+		//bool is_host_from_client{};
+		//user::id_t wanna_kick_off{};
 		//bool mute_all_once{};
 		//bool mute_all_keep{};
 		//bool share_audio{};
@@ -373,16 +383,18 @@ void ClientApp::Receive() {
 			continue;
 		}
 
-		client.ReceiveBy(rv.other_name);
+		client.ReceiveBy(rv.other_name, sizeof(rv.other_name));
 		if (!client.ReceiveBy(rv.is_host_from_server)) [[unlikely]] { break; }
 		if (rv.is_host_from_server && get(logger.id) == rv.id) {
 			if (!client.ReceiveBy(rv.room_passwd)) [[unlikely]] { break; }
 			set(ui.room_user.host.room_passwd, rv.room_passwd);
 		}
-		if (!client.ReceiveBy(rv.is_host_from_client)) [[unlikely]] { break; }
-		if (rv.is_host_from_client) {
-			client.ReceiveBy(rv.wanna_kick_off);
-		}
+		if (!client.ReceiveBy(&rv.hostPower, sizeof(rv.hostPower))) { break; }
+		net::recursive_apply(rv.hostPower, net::NetworkToHost{});
+		//if (!client.ReceiveBy(rv.is_host_from_client)) [[unlikely]] { break; }
+		//if (rv.is_host_from_client) {
+		//	client.ReceiveBy(rv.wanna_kick_off);
+		//}
 
 		if (!client.ReceiveBy(rv.has_words_msg)) [[unlikely]] { break; }
 		if (rv.has_words_msg) [[unlikely]] {
@@ -406,10 +418,12 @@ void ClientApp::Receive() {
 
 		if (!client.ReceiveBy(rv.share_video)) [[unlikely]] { break; }
 
-		if (rv.is_host_from_client) {
-			if (rv.wanna_kick_off == get(logger.id)) [[unlikely]] {
+		if (rv.hostPower.is_host_from_client) {
+			if (rv.hostPower.wanna_kick_off == get(logger.id)) [[unlikely]] {
 				p_show.setEnd(true, ShowPara::End::kickOff);
 			}
+			set(ui.plugin.allow_asr, rv.hostPower.allow_asr);
+			set(ui.plugin.allow_translator, rv.hostPower.allow_translator);
 		}
 		{
 			std::lock_guard lock(mtx_users);
@@ -538,20 +552,36 @@ void ClientApp::Send() {
 		client.Send(get(logger.id));
 		{
 			std::lock_guard lock(logger.mtx_name);
-			client.Send(logger.name);
+			const auto size = logger.name.size();
+			logger.name.resize(name_bytes);
+			client.Send(logger.name.data(), logger.name.size());
+			logger.name.resize(size);
 		}
-		client.Send(is_host_from_client);
-		if (is_host_from_client) {
-			client.Send(get(ui.room_user.host.set_room_passwd));
-			set(ui.room_user.host.set_room_passwd, Room::invalid_passwd);
-			client.Send(get(ui.room_user.host.wanna_kick_off));
-			set(ui.room_user.host.wanna_kick_off, user::invalid_id);
-			client.Send(get(ui.room_user.host.transfer_host));
-			set(ui.room_user.host.transfer_host, user::invalid_id);
-			//client.Send(get(ui.room_user.host.mute_all_once));
-			//set(ui.room_user.host.mute_all_once, false);
-			//client.Send(get(ui.room_user.host.mute_all_keep));
-		}
+		s_HostPower hostPower{
+			.is_host_from_client = is_host_from_client,
+			.allow_asr = get(ui.room_user.host.allow_asr),
+			.allow_translator = get(ui.room_user.host.allow_translator),
+			.set_passwd = get(ui.room_user.host.set_room_passwd),
+			.wanna_kick_off = get(ui.room_user.host.wanna_kick_off),
+			.transfer_host = get(ui.room_user.host.transfer_host),
+		};
+		set(ui.room_user.host.set_room_passwd, Room::invalid_passwd);
+		set(ui.room_user.host.wanna_kick_off, user::invalid_id);
+		set(ui.room_user.host.transfer_host, user::invalid_id);
+		net::recursive_apply(hostPower, net::HostToNetwork{});
+		client.Send(&hostPower, sizeof(hostPower));
+		//client.Send(is_host_from_client);
+		//if (is_host_from_client) {
+		//	client.Send(get(ui.room_user.host.set_room_passwd));
+		//	set(ui.room_user.host.set_room_passwd, Room::invalid_passwd);
+		//	client.Send(get(ui.room_user.host.wanna_kick_off));
+		//	set(ui.room_user.host.wanna_kick_off, user::invalid_id);
+		//	client.Send(get(ui.room_user.host.transfer_host));
+		//	set(ui.room_user.host.transfer_host, user::invalid_id);
+		//	//client.Send(get(ui.room_user.host.mute_all_once));
+		//	//set(ui.room_user.host.mute_all_once, false);
+		//	//client.Send(get(ui.room_user.host.mute_all_keep));
+		//}
 		bool has_words_msg;
 		{
 			std::lock_guard lock(ui.send.words_msg.mtx);
@@ -560,13 +590,13 @@ void ClientApp::Send() {
 		client.Send(has_words_msg);
 		if (has_words_msg) [[unlikely]] {
 			user::id_t target = get(ui.send.words_msg_target);
-			client.Send(target);
 			char buf[sizeof(ui.send.words_msg.buf)];
 			{
 				std::lock_guard lock(ui.send.words_msg.mtx);
 				memcpy(buf, ui.send.words_msg.buf, sizeof(buf));
 				ui.send.words_msg.buf[0] = '\0';
 			}
+			client.Send(target);
 			client.Send(buf, sizeof(buf));
 			if (target != user::public_target) {
 				std::lock_guard lock(mtx_users);

@@ -512,37 +512,20 @@ inline ClientApp::Page ClientApp::Show() {
 						}
 						ImGui::TreePop();
 					}
+					ImGui::Text("plugin allow: ");
+					COMP_ATOMIC(ImGui::Checkbox, "allow_asr", ui.room_user.host.allow_asr);
+					COMP_ATOMIC(ImGui::Checkbox, "allow_translator", ui.room_user.host.allow_translator);
 					ImGui::TreePop();
 				}// host
 				if (ImGui::TreeNode("plugin")) {
-					if (ImGui::TreeNode("asr")) {
+					while (ImGui::TreeNode("asr")) {
+						DEFER{ ImGui::TreePop };
+
+						if (!get(ui.plugin.allow_asr)) {
+							ImGui::Text("disabled by host");
+							break;
+						}
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
-						//bool on0 = asrOn<false>();
-						//bool on1 = on0;
-						//if (ImGui::BeginCombo("plugins", plug.asr.dir.c_str())) {
-						//	if (!on0) {
-						//		std::string dir;
-						//		for (const auto& entry : fs::directory_iterator("plugin/asr")) {
-						//			wins::WideToUtf8(dir, entry.path().c_str());
-						//			if (ImGui::Selectable(dir.c_str())) {
-						//				plug.asr.dir = std::move(dir);
-						//				break;
-						//			}
-						//		}
-						//	}
-						//	ImGui::EndCombo();
-						//}
-						//if (!plug.asr.dir.empty()) {
-						//	ImGui::Checkbox("load", &on1);
-						//}
-						//if (on0 != on1) {
-						//	if (on1) {
-						//		asrLoad();
-						//	}
-						//	else {
-						//		asrDownload();
-						//	}
-						//}
 						auto [on, changed]= ::loadPlugin("plugin/asr", plug.asr.dir, this, asrOn<false>(), &ClientApp::asrLoad, &ClientApp::asrDownload);
 						if (on) {
 							ImGui::BeginChild("##asr", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
@@ -584,9 +567,14 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::EndChild();
 							ImGui::Checkbox("at_bottom", &at_bottom);
 						}
-						ImGui::TreePop();
+						break;
 					}// asr
-					if (ImGui::TreeNode("translator")) {
+					while (ImGui::TreeNode("translator")) {
+						DEFER{ ImGui::TreePop };
+						if (!get(ui.plugin.allow_translator)) {
+							ImGui::Text("disabled by host");
+							break;
+						}
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
 						auto [on, changed] = ::loadPlugin("plugin/translator", plug.translator.dir, this, translatorOn<false>(), &ClientApp::translatorLoad, &ClientApp::translatorDownload);
 						if (on) {
@@ -656,7 +644,7 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::EndChild();
 						}
 
-						ImGui::TreePop();
+						break;
 					}// translator
 					ImGui::TreePop();
 				}// plugin
