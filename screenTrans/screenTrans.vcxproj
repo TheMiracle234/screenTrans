@@ -194,6 +194,7 @@
     <ClInclude Include="include\net\Socket.hpp" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />
+    <ClInclude Include="include\util\compile_time.hpp" />
     <ClInclude Include="include\util\Debug.hpp" />
     <ClInclude Include="include\util\Timer.hpp" />
     <ClInclude Include="include\util\util.hpp" />

@@ -1,6 +1,12 @@
 ﻿#pragma once
 
 #include <utility>
+#include <string>
+#include <string_view>
+#include <fstream>
+#include <filesystem>
+#include <cstddef>
+#include <chrono>
 
 template<typename Fn>
 struct Defer {
@@ -32,3 +38,33 @@ struct Record{
 	}
 	bool changed() { return now != pre; }
 };
+
+inline std::string makeRecordPath(std::string_view dir, std::string_view postfix) {
+	using namespace std::chrono;
+	auto now = system_clock::now();
+	auto t = floor<seconds>(now);
+	auto zt = zoned_time{ current_zone(), t };     // 本地时区
+	auto local = zt.get_local_time();
+	auto ymd = year_month_day{ floor<days>(local) };
+	auto tod = hh_mm_ss<seconds>{ local - floor<days>(local) };
+
+	std::string path = std::format("{}/{:04}-{:02}-{:02}_{:02}-{:02}-{:02}{}",
+		dir,
+		int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()),
+		tod.hours().count(), tod.minutes().count(), tod.seconds().count(),
+		postfix
+		);
+
+	// 顺手确保目录存在
+	std::error_code ec;
+	std::filesystem::create_directories(dir, ec);
+	return path;
+}
+
+inline bool saveFile(std::string_view path, const void* data, std::size_t bytes) {
+	std::ofstream file(std::string(path), std::ios::binary);
+	if (!file)
+		return false;
+	file.write(static_cast<const char*>(data), static_cast<std::streamsize>(bytes));
+	return file.good();
+}

@@ -9,6 +9,7 @@
 #	include <ws2tcpip.h>   // getaddrinfo / freeaddrinfo / gai_strerror
 #	pragma comment(lib, "ws2_32.lib")
 #else
+#	include <netinet/tcp.h>   // ← TCP_NODELAY
 #	include <sys/types.h>
 #	include <sys/socket.h>
 #	include <netinet/in.h>
@@ -37,6 +38,17 @@ namespace net {
 	inline constexpr int socket_error = -1;
 	inline int last_socket_error() { return errno; }
 #endif // _WIN32
+
+	// 关闭 Nagle：小包立即发出，避免 "长度头 4B + 负载" 被延迟 ACK 卡住
+	inline bool set_tcp_nodelay(socket_t id) {
+		if (id == invalid_socket) return false;
+		int on = 1;
+		// Windows 要求 const char*，Linux 要求 const void* —— 传 const char* 两边都能编译
+		// （和 Server.cpp 里 SO_REUSEADDR 的写法保持一致）
+		return setsockopt(id, IPPROTO_TCP, TCP_NODELAY,
+			reinterpret_cast<const char*>(&on),
+			static_cast<socklen_t>(sizeof(on))) == 0;
+	}
 
 	namespace tcp {
 		class Client;
@@ -73,6 +85,7 @@ namespace net {
 	public:
 		static bool Check(bool ok);
 		static std::string& getLastError() { return last_err; }
+		Socket() = default;
 		Socket(socket_t id);
 		Socket(const Socket& other) = delete;
 		Socket& operator=(const Socket& other) = delete;

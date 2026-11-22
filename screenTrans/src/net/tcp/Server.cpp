@@ -67,7 +67,7 @@ namespace tcp {
 	}
 
 	Server::Server(Ip ip, uint16_t port, const char* recvFrom) :
-		skt{invalid_socket}
+		skt{}
 	{
 		if (!Init(ip, port, recvFrom)) {
 			std::cerr << "Server init error" << std::endl;

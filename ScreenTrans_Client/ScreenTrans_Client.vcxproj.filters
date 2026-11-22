@@ -47,9 +47,6 @@
     <ClInclude Include="include\imgui_ex.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\compile_time.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="include\CameraCapture.hpp">
       <Filter>头文件</Filter>
     </ClInclude>

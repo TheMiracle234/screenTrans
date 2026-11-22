@@ -122,6 +122,8 @@ inline ClientApp::Page ClientApp::Show() {
 		const auto DEFAULT_BK_COLOR = style->Colors[ImGuiCol_WindowBg];
 #endif
 
+		bool save_words_message{};
+		std::string words_message_tobesaved;
 
 		boost::float64_t d_time = 0;
 		float fps = 0;
@@ -221,15 +223,35 @@ inline ClientApp::Page ClientApp::Show() {
 					ImGui::PushTextWrapPos(0.0f);   // 0 表示按窗口右边界换行
 					if (ui.send.words_msg_target == user::public_target) {
 						std::lock_guard lock{ ui.send.total_words_msg.mtx };
-						for (const auto& msg : ui.send.total_words_msg.buf) {
-							ImGui::TextUnformatted(msg.c_str());
+						if (!save_words_message) {
+							for (const auto& msg : ui.send.total_words_msg.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+							}
+						}
+						else {
+							for (const auto& msg : ui.send.total_words_msg.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+								words_message_tobesaved += (msg + "\n");
+							}
+							::saveFile(::makeRecordPath("record/words_message", ".txt"), words_message_tobesaved.data(), words_message_tobesaved.size());
+							words_message_tobesaved.clear();
 						}
 					}
 					else {
 						std::lock_guard lock(mtx_users);
 						auto& msgs = users[get(ui.send.words_msg_target)].total_words_msg;
-						for (const auto& msg : msgs.buf) {
-							ImGui::TextUnformatted(msg.c_str());
+						if (!save_words_message) {
+							for (const auto& msg : msgs.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+							}
+						}
+						else {
+							for (const auto& msg : msgs.buf) {
+								ImGui::TextUnformatted(msg.c_str());
+								words_message_tobesaved += (msg + "\n");
+							}
+							::saveFile(::makeRecordPath("record/words_message", ".txt"), words_message_tobesaved.data(), words_message_tobesaved.size());
+							words_message_tobesaved.clear();
 						}
 					}
 					ImGui::PopTextWrapPos();
@@ -242,6 +264,7 @@ inline ClientApp::Page ClientApp::Show() {
 						memcpy(ui.send.words_msg.buf, mid.words_msg_buf, sizeof(mid.words_msg_buf));
 						mid.words_msg_buf[0] = '\0';
 					}
+					save_words_message = ImGui::Button("save");
 
 					ImGui::TreePop();
 				}// message
@@ -489,37 +512,20 @@ inline ClientApp::Page ClientApp::Show() {
 						}
 						ImGui::TreePop();
 					}
+					ImGui::Text("plugin allow: ");
+					COMP_ATOMIC(ImGui::Checkbox, "allow_asr", ui.room_user.host.allow_asr);
+					COMP_ATOMIC(ImGui::Checkbox, "allow_translator", ui.room_user.host.allow_translator);
 					ImGui::TreePop();
 				}// host
 				if (ImGui::TreeNode("plugin")) {
-					if (ImGui::TreeNode("asr")) {
+					while (ImGui::TreeNode("asr")) {
+						DEFER{ ImGui::TreePop };
+
+						if (!get(ui.plugin.allow_asr)) {
+							ImGui::Text("disabled by host");
+							break;
+						}
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
-						//bool on0 = asrOn<false>();
-						//bool on1 = on0;
-						//if (ImGui::BeginCombo("plugins", plug.asr.dir.c_str())) {
-						//	if (!on0) {
-						//		std::string dir;
-						//		for (const auto& entry : fs::directory_iterator("plugin/asr")) {
-						//			wins::WideToUtf8(dir, entry.path().c_str());
-						//			if (ImGui::Selectable(dir.c_str())) {
-						//				plug.asr.dir = std::move(dir);
-						//				break;
-						//			}
-						//		}
-						//	}
-						//	ImGui::EndCombo();
-						//}
-						//if (!plug.asr.dir.empty()) {
-						//	ImGui::Checkbox("load", &on1);
-						//}
-						//if (on0 != on1) {
-						//	if (on1) {
-						//		asrLoad();
-						//	}
-						//	else {
-						//		asrDownload();
-						//	}
-						//}
 						auto [on, changed]= ::loadPlugin("plugin/asr", plug.asr.dir, this, asrOn<false>(), &ClientApp::asrLoad, &ClientApp::asrDownload);
 						if (on) {
 							ImGui::BeginChild("##asr", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
@@ -561,9 +567,14 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::EndChild();
 							ImGui::Checkbox("at_bottom", &at_bottom);
 						}
-						ImGui::TreePop();
+						break;
 					}// asr
-					if (ImGui::TreeNode("translator")) {
+					while (ImGui::TreeNode("translator")) {
+						DEFER{ ImGui::TreePop };
+						if (!get(ui.plugin.allow_translator)) {
+							ImGui::Text("disabled by host");
+							break;
+						}
 						ImGui::PushIdGuard pushIdGuard(__LINE__);
 						auto [on, changed] = ::loadPlugin("plugin/translator", plug.translator.dir, this, translatorOn<false>(), &ClientApp::translatorLoad, &ClientApp::translatorDownload);
 						if (on) {
@@ -607,7 +618,7 @@ inline ClientApp::Page ClientApp::Show() {
 
 							ImGui::BeginChild("##translate", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
 							ImGui::PushTextWrapPos(0.0f);
-
+							
 							if (!asrOn<true>()) {
 								translatorSetError<true>("load asr before load translator");
 							}
@@ -633,7 +644,7 @@ inline ClientApp::Page ClientApp::Show() {
 							ImGui::EndChild();
 						}
 
-						ImGui::TreePop();
+						break;
 					}// translator
 					ImGui::TreePop();
 				}// plugin

@@ -87,7 +87,7 @@ using std::literals::chrono_literals::operator""s;
 #include <gl/Texture.h>
 #include <gl/util.h>
 
-#include <compile_time.hpp>
+#include <util/compile_time.hpp>
 #include <CameraCapture.hpp>
 
 #include <Mp4Recorder.hpp>
@@ -236,7 +236,7 @@ private:
 		static inline constexpr uint16_t invalid_port{ 0 };
 		ALIGN(char) ipv4[64]{};
 		ALIGN(uint16_t) port{ invalid_port };
-		ALIGN(char) name[128]{};
+		ALIGN(char) name[name_bytes]{};
 	}p1;
 	Page connectToServer();
 
@@ -422,6 +422,8 @@ private:
 			struct {
 				ALIGN(uint32_t) set_room_passwd{};
 				ALIGN(bool8_t) mute_all_keep{};
+				ALIGN(bool8_t) allow_asr {};
+				ALIGN(bool8_t) allow_translator {};
 			} host;
 		} room_user;
 	};
@@ -525,8 +527,14 @@ private:
 				std::atomic<uint32_t> set_room_passwd{ Room::invalid_passwd };
 				std::atomic<bool> mute_all_once{ false };
 				std::atomic<bool> mute_all_keep{ false };
+				std::atomic<bool> allow_asr{ true };
+				std::atomic<bool> allow_translator{ true };
 			} host;
 		} room_user;
+		struct {
+			std::atomic<bool> allow_asr{ true };
+			std::atomic<bool> allow_translator{ true };
+		} plugin;
 	} ui;
 
 	void* any_usage{nullptr}; // now only for renderFunc in draw function

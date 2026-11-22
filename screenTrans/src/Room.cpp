@@ -54,37 +54,38 @@ void Room::threadSendMsg(User* clientMtx) {
 	std::jthread audioThread(&Room::threadSendAudio, this, clientMtx, std::ref(closedSignalSent));
 
 	user::id_t last_chosen_user = user::invalid_id;
+
 	struct {
-		bool little_end{};
-		user::id_t id{};
-		std::string name{};
-		bool is_host_from_client{};
-		uint32_t set_passwd{ Room::invalid_passwd };
-		user::id_t wanna_kick_off{};
-		user::id_t transfer_host{};
-		//bool mute_all_once{};
-		//bool mute_all_keep{};
-		//bool share_audio{};
-		//std::vector<float> audio_frames{};
-		bool has_words_msg;
-		user::id_t words_msg_target{};
-		char words_msg[words_msg_bytes];
-		uint64_t choose_user_count;
+		s_Msg clientSend;
+
+		//bool little_end{};
+		//user::id_t id{};
+		//char name[name_bytes];
+		//s_HostPower hostPower{
+		//	.is_host_from_client{},
+		//	.set_passwd{ Room::invalid_passwd },
+		//	.wanna_kick_off{},
+		//	.transfer_host{},
+		//};
+		//bool has_words_msg;
+		//user::id_t words_msg_target{};
+		//char words_msg[words_msg_bytes];
+		//uint64_t choose_user_count;
 		std::vector<user::id_t> choose_users;
 		//user::id_t choose_user{};
-		bool share_video{};
-		int32_t pk_size{};
-		int32_t video_w;
-		int32_t video_h;
+		//bool share_video{};
+		//int32_t pk_size{};
+		//int32_t video_w;
+		//int32_t video_h;
 		std::vector<std::vector<uint8_t>> packets{};
-		bool share_camera{};
-		int32_t cam_pk_size{};
-		int32_t cam_w;
-		int32_t cam_h;
+		//bool share_camera{};
+		//int32_t cam_pk_size{};
+		//int32_t cam_w;
+		//int32_t cam_h;
 		std::vector<std::vector<uint8_t>> cam_packets{};
 
 		void restore() {
-
+			
 		}
 	}rv;
 	for (;;) {
@@ -94,35 +95,29 @@ void Room::threadSendMsg(User* clientMtx) {
 
 		int32_t packet_count{};
 
-		client->ReceiveBy(rv.little_end);
-		client->ReceiveBy(rv.id);
-		client->ReceiveBy(rv.name);
-		client->ReceiveBy(rv.is_host_from_client);
-		if (rv.is_host_from_client) {
-			client->ReceiveBy(rv.set_passwd);
-			client->ReceiveBy(rv.wanna_kick_off);
-			client->ReceiveBy(rv.transfer_host);
-			//client->ReceiveBy(rv.mute_all_once);
-			//client->ReceiveBy(rv.mute_all_keep);
-		}
-		//client->ReceiveBy(rv.share_audio);
-		//if (rv.share_audio) {
-		//	client->ReceiveBy(rv.audio_frames);
+		bool clientSendOk = client->ReceiveBy(&rv.clientSend, sizeof(rv.clientSend));
+		s_MsgNtoh(rv.clientSend);
+
+		//client->ReceiveBy(rv.little_end);
+		//client->ReceiveBy(rv.id);
+		//client->ReceiveBy(rv.name, sizeof(rv.name));
+		//client->ReceiveBy(&rv.hostPower, sizeof(rv.hostPower));
+		//net::recursive_apply(rv.hostPower, net::NetworkToHost{});
+
+		//client->ReceiveBy(rv.has_words_msg);
+		//if (rv.has_words_msg) {
+		//	client->ReceiveBy(rv.words_msg_target);
+		//	client->ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
 		//}
-		client->ReceiveBy(rv.has_words_msg);
-		if (rv.has_words_msg) {
-			client->ReceiveBy(rv.words_msg_target);
-			client->ReceiveBy(rv.words_msg, sizeof(rv.words_msg));
-		}
-		client->ReceiveBy(rv.choose_user_count);
-		client->ReceiveBy(rv.choose_users, net::EndSrcTar{ rv.little_end ? net::End::little : net::End::big, net::End::native });
+		//client->ReceiveBy(rv.choose_user_count);
+		client->ReceiveBy(rv.choose_users, net::EndSrcTar{ rv.clientSend.end, net::End::native });
 		//client->ReceiveBy(rv.choose_user);
-		client->ReceiveBy(rv.share_video);
-		if (rv.share_video) {
-			client->ReceiveBy(rv.video_w);
-			client->ReceiveBy(rv.video_h);
-			if (client->ReceiveBy(rv.pk_size)) [[likely]] {
-				packet_count = rv.pk_size;
+		//client->ReceiveBy(rv.share_video);
+		if (rv.clientSend.share_video) {
+			//client->ReceiveBy(rv.video_w);
+			//client->ReceiveBy(rv.video_h);
+			if (clientSendOk) [[likely]] {
+				packet_count = rv.clientSend.pk_size;
 				rv.packets.resize(std::max(rv.packets.size(), (size_t)packet_count));
 				for (int32_t i = 0;i < packet_count;++i) {
 					client->ReceiveBy(rv.packets[i], { End::native, End::native });
@@ -130,13 +125,13 @@ void Room::threadSendMsg(User* clientMtx) {
 			}
 		}
 
-		client->ReceiveBy(rv.share_camera);
-		if (rv.share_camera) {
-			client->ReceiveBy(rv.cam_w);
-			client->ReceiveBy(rv.cam_h);
-			if (client->ReceiveBy(rv.cam_pk_size)) {
-				rv.cam_packets.resize(std::max(rv.cam_packets.size(), (size_t)rv.cam_pk_size));
-				for (int32_t i = 0; i < rv.cam_pk_size; i++) {
+		//client->ReceiveBy(rv.share_camera);
+		if (rv.clientSend.share_camera) {
+			//client->ReceiveBy(rv.cam_w);
+			//client->ReceiveBy(rv.cam_h);
+			if (clientSendOk) {
+				rv.cam_packets.resize(std::max(rv.cam_packets.size(), (size_t)rv.clientSend.cam_pk_size));
+				for (int32_t i = 0; i < rv.clientSend.cam_pk_size; i++) {
 					client->ReceiveBy(rv.cam_packets[i], { End::native, End::native });
 				}
 			}
@@ -144,16 +139,19 @@ void Room::threadSendMsg(User* clientMtx) {
 
 		//std::vector<std::vector<uint8_t>> packets;
 		if (!client->Closed()) [[likely]] {
-			if (rv.is_host_from_client){
-				if (rv.set_passwd != Room::invalid_passwd && rv.set_passwd != this->passwd()) [[unlikely]] {
-					this->setPasswd(rv.set_passwd);
+			if (rv.clientSend.is_host_from_client){
+				if (rv.clientSend.passwd != Room::invalid_passwd && rv.clientSend.passwd != this->passwd()) [[unlikely]] {
+					this->setPasswd(rv.clientSend.passwd);
 				}
-				if (rv.transfer_host != user::invalid_id) [[unlikely]] {
-					this->setHost(rv.transfer_host);
+				if (rv.clientSend.transfer_host != user::invalid_id) [[unlikely]] {
+					this->setHost(rv.clientSend.transfer_host);
 				}
 			}
 
-			m_choices_of[client->Id()].insert(rv.choose_users.begin(), rv.choose_users.end());
+			{
+				std::lock_guard lock(m_mutex_choices);
+				m_choices_of[client->Id()].insert(rv.choose_users.begin(), rv.choose_users.end());
+			}
 			//if (!(flags & flag_clientChoiceRecorded) || (rv.choose_user != last_chosen_user)) { // just =
 			//	{
 			//		std::lock_guard lock(m_mutex_choices);
@@ -166,80 +164,105 @@ void Room::threadSendMsg(User* clientMtx) {
 		}
 		{
 			bool is_host_from_server = m_host_skt.load(std::memory_order_acquire) == client->Id();
+			rv.clientSend.is_host_from_server = is_host_from_server;
+			if (rv.clientSend.is_host_from_client) {
+				if (!is_host_from_server) [[unlikely]] {
+					rv.clientSend.wanna_kick_off = user::invalid_id;
+				}
+			}
+
 			std::shared_lock lock(m_mtx_client_sockets);
 			std::for_each(std::execution::par, m_client_sockets.begin(), m_client_sockets.end(), 
 			[&, packet_count](std::unique_ptr<User>& cm) {
 				std::lock_guard lock(cm->mtx_client);
 				Client* c = &cm->client;
 
-				Signal signal{ rv.little_end ? signal_littleEnd : Signal(0) };
-				if (client->Closed()) [[unlikely]] {
-					{
-						std::lock_guard lock_choices(m_mutex_choices);
-						m_choices_of.erase(save_id);
-					}
-					c->Send(signal |= signal_closed);
-					c->Send(save_id);
-					closedSignalSent.store(true, std::memory_order_release);
-					return;
-				}
-
 				bool choice_isnt_me;
 				{
-					std::shared_lock lock_choices(m_mutex_choices);
-					auto choices = m_choices_of.find(c->Id());
-					if (choices != m_choices_of.end()) [[likely]] {
-						choice_isnt_me = choices->second.find(rv.id) == choices->second.end();
-					}
-					else {
-						choice_isnt_me = true;
-					}
-					//choice_isnt_me = choice == m_choices_of.end() || choice->second != rv.id;
-				}
-				if (choice_isnt_me) { c->Send(signal |= signal_choiceNotMatch); }
-				else				{ c->Send(signal |= signal_none); }
+					s_Msg sd = rv.clientSend;
 
-				c->Send(rv.id);
-				c->Send(rv.name);
-				c->Send(is_host_from_server);
-				if (is_host_from_server && c->Id() == client->Id()) {
-					c->Send(this->passwd());
-				}
-				c->Send(rv.is_host_from_client);
-				if (rv.is_host_from_client) {
-					if (is_host_from_server) [[likely]] {
-						c->Send(rv.wanna_kick_off);
+					//sd.signal = sd.end == net::End::little ? signal_littleEnd : signal_none;
+
+					//Signal signal{ sd.end == net::End::little ? signal_littleEnd : Signal{} };
+					if (client->Closed()) [[unlikely]] {
+						{
+							std::lock_guard lock_choices(m_mutex_choices);
+							m_choices_of.erase(save_id);
+						}
+						sd.signal |= signal_closed;
+						sd.id = save_id;
+
+						s_MsgHton(sd);
+						c->Send(&sd, sizeof(sd));
+
+						//c->Send(signal |= signal_closed);
+						//c->Send(save_id);
+						closedSignalSent.store(true, std::memory_order_release);
+						return;
+					}
+
+					{
+						std::shared_lock lock_choices(m_mutex_choices);
+						auto choices = m_choices_of.find(c->Id());
+						if (choices != m_choices_of.end()) [[likely]] {
+							choice_isnt_me = choices->second.find(sd.id) == choices->second.end();
+						}
+						else {
+							choice_isnt_me = true;
+						}
+						//choice_isnt_me = choice == m_choices_of.end() || choice->second != rv.id;
+					}
+					if (choice_isnt_me) {
+						//c->Send(signal |= signal_choiceNotMatch); 
+						sd.signal |= signal_choiceNotMatch;
 					}
 					else {
-						c->Send(user::invalid_id);
+						//c->Send(signal |= signal_none); 
 					}
+
+					//c->Send(sd.id);
+					//c->Send(sd.name, sizeof(sd.name));
+
+					//c->Send(is_host_from_server);
+					sd.passwd = this->passwd();
+					//if (is_host_from_server && c->Id() == client->Id()) {
+					//	c->Send(this->passwd());
+					//}
+					//c->Send(rv.is_host_from_client);
+					//net::recursive_apply(sd.hostPower, net::HostToNetwork{});
+					//c->Send(&sd.hostPower, sizeof(sd.hostPower));
+
+					//c->Send(sd.has_words_msg);
+					//if (sd.has_words_msg) [[unlikely]] {
+					//	c->Send(sd.words_msg_target);
+					//	if (sd.words_msg_target == user::public_target || makeId(c->Id()) == sd.words_msg_target) {
+					//		c->Send(sd.words_msg_buf, sizeof(sd.words_msg_buf));
+					//	}
+					//}
+					//c->Send(sd.share_video);
+
+					s_MsgHton(sd);
+					c->Send(&sd, sizeof(sd));
 				}
-				c->Send(rv.has_words_msg);
-				if (rv.has_words_msg) [[unlikely]] {
-					c->Send(rv.words_msg_target);
-					if (rv.words_msg_target == user::public_target || makeId(c->Id()) == rv.words_msg_target) {
-						c->Send(rv.words_msg, sizeof(rv.words_msg));
-					}
-				}
-				c->Send(rv.share_video);
+
 				if (choice_isnt_me) {
 					return;
 				}
-				if (rv.share_video) {
-					c->Send(rv.pk_size);
-					c->Send(rv.video_w);
-					c->Send(rv.video_h);
+				if (rv.clientSend.share_video) {
+					//c->Send(sd.pk_size);
+					//c->Send(sd.sc_w);
+					//c->Send(sd.sc_h);
 					for (int i = 0;i < packet_count;++i) {
 						c->Send(rv.packets[i]);
 					}
 				}
 
-				c->Send(rv.share_camera);
-				if (rv.share_camera) {
-					c->Send(rv.cam_pk_size);
-					c->Send(rv.cam_w);
-					c->Send(rv.cam_h);
-					for (int i = 0; i < rv.cam_pk_size; i++) {
+				//c->Send(sd.share_camera);
+				if (rv.clientSend.share_camera) {
+					//c->Send(sd.cam_pk_size);
+					//c->Send(sd.cam_w);
+					//c->Send(sd.cam_h);
+					for (int i = 0; i < rv.clientSend.cam_pk_size; i++) {
 						c->Send(rv.cam_packets[i]);
 					}
 				}
