@@ -39,6 +39,9 @@
     <ClInclude Include="src\audio_quality.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\plugin\Asr.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\stream_api.cpp">

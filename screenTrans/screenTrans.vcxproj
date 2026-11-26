@@ -107,6 +107,7 @@
       <BuildStlModules>false</BuildStlModules>
       <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -130,6 +131,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)/ASR/include;$(WindowsSDK_IncludePath);thirdparty/include/miniaudio;include;thirdparty/include;thirdparty/include/imgui;thirdparty/include/gl;thirdparty/include/glad;thirdparty/include/boost</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -186,7 +188,6 @@
     <ClInclude Include="include\gl\Window.h" />
     <ClInclude Include="include\net\AddrInfo.hpp" />
     <ClInclude Include="include\net\tcp\Client.hpp" />
-    <ClInclude Include="include\plugin\Asr.hpp" />
     <ClInclude Include="include\plugin\Loader.hpp" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenCapture.h" />
@@ -194,8 +195,10 @@
     <ClInclude Include="include\net\Socket.hpp" />
     <ClInclude Include="include\ST_API.h" />
     <ClInclude Include="include\st_signals.h" />
+    <ClInclude Include="include\util\ClampdSemaphore.hpp" />
     <ClInclude Include="include\util\compile_time.hpp" />
     <ClInclude Include="include\util\Debug.hpp" />
+    <ClInclude Include="include\util\export.h" />
     <ClInclude Include="include\util\Timer.hpp" />
     <ClInclude Include="include\util\util.hpp" />
     <ClInclude Include="thirdparty\include\boost\boost\preprocessor\arithmetic.hpp" />

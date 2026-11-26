@@ -70,7 +70,7 @@ namespace asr {
             diagnostics_.input(count); measure_locked(); wake_.notify_all();
             return dropped ? PLUGIN_ASR_OVERFLOW : PLUGIN_ASR_OK;
         }
-        int32_t poll(plugin_asr_result* out, char* text, uint32_t capacity) {
+        int32_t poll(PLUGIN_ASR_result* out, char* text, uint32_t capacity) {
             if (!out || out->struct_size != sizeof(*out) || (!text && capacity)) return PLUGIN_ASR_INVALID;
             std::lock_guard lock(mutex_); diagnostics_.poll();
             *out = {}; out->struct_size = sizeof(*out);

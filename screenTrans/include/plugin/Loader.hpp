@@ -33,10 +33,10 @@ namespace plugin {
             return h != nullptr;
         }
 
-        void detach() {
-            assert(on());
-            h = nullptr;
-        }
+        //void detach() {
+        //    assert(on());
+        //    h = nullptr;
+        //}
 
         template<typename Fn>
         bool get(Fn& out, const char* func) {

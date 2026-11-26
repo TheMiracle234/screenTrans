@@ -1409,10 +1409,13 @@
     <ClInclude Include="include\net\AddrInfo.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\plugin\Asr.hpp">
+    <ClInclude Include="include\util\compile_time.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="include\util\compile_time.hpp">
+    <ClInclude Include="include\util\export.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\util\ClampdSemaphore.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
