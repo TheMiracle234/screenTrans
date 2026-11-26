@@ -120,8 +120,9 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>include;third\whisper.cpp\ggml_include;third\whisper.cpp\whisper_include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/screenTrans/include;include;third\whisper.cpp\ggml_include;third\whisper.cpp\whisper_include</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /W4 %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -142,8 +143,9 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>include;third\whisper.cpp\ggml_include;third\whisper.cpp\whisper_include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/screenTrans/include;include;third\whisper.cpp\ggml_include;third\whisper.cpp\whisper_include</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 /W4 %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -158,6 +160,7 @@
   <ItemGroup>
     <ClInclude Include="include\asr_diagnostics.hpp" />
     <ClInclude Include="include\plugin\asr.h" />
+    <ClInclude Include="include\plugin\Asr.hpp" />
     <ClInclude Include="include\stream_worker.hpp" />
     <ClInclude Include="src\audio_quality.hpp" />
     <ClInclude Include="src\model_file.hpp" />

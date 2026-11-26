@@ -1,6 +1,8 @@
 ﻿#pragma once
 #include <type_traits>
 #include <atomic>
+#include <string>
+#include <filesystem>
 
 template<typename T>
 struct is_atomic : std::false_type {};
@@ -155,4 +157,18 @@ namespace ImGui {
 		PushIdGuard(int id) { ImGui::PushID(id); }
 		~PushIdGuard() { ImGui::PopID(); }
 	};
+
+	inline void SelectFile(const char* label, const std::filesystem::path& targetDir, std::string& out) {
+		if (ImGui::BeginCombo(label, out.c_str())) {
+			std::string dir;
+			for (const auto& entry : std::filesystem::directory_iterator(targetDir)) {
+				dir = entry.path().generic_string().c_str();
+				if (ImGui::Selectable(dir.c_str())) {
+					out = std::move(dir);
+					break;
+				}
+			}
+			ImGui::EndCombo();
+		}
+	}
 }

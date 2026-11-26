@@ -20,9 +20,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\CameraCapture.cpp" />
+    <ClCompile Include="src\ClientApp.cpp" />
     <ClCompile Include="src\H264Decoder.cpp" />
     <ClCompile Include="src\H264Encoder.cpp" />
-    <ClCompile Include="src\ClientApp.cpp" />
     <ClCompile Include="src\Mp4Recorder.cpp" />
     <ClCompile Include="src\PageShow.inl" />
   </ItemGroup>
@@ -92,6 +92,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -106,6 +107,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -116,11 +118,13 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>GLEW_STATIC;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NOMINMAX;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>src;$(SolutionDir)/plugin_Translator/include;src;third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(SolutionDir)/plugin_Summary/src;$(SolutionDir)/plugin_Translator/include;third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,12 +140,14 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>GLEW_STATIC;NDEBUG</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NOMINMAX;NDEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>src;$(SolutionDir)/plugin_Translator/include;third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>src;$(SolutionDir)/plugin_Summary/src;$(SolutionDir)/plugin_Translator/include;third/ffmpeg/include;third/ccap;include;$(SolutionDir)/screenTrans/thirdparty/include/miniaudio;$(SolutionDir)/screenTrans/include;$(SolutionDir)/screenTrans/thirdparty/include/imgui;$(SolutionDir)/screenTrans/thirdparty/include;$(SolutionDir)/screenTrans/thirdparty/include/gl;$(SolutionDir)/screenTrans/thirdparty/include/glad;$(SolutionDir)/screenTrans/thirdparty/include/boost;$(SolutionDir)/ASR/include</AdditionalIncludeDirectories>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

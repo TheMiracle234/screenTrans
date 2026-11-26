@@ -1,7 +1,7 @@
 ﻿#ifndef NDEBUG
-#   error plugin_ASR should be compiled in Release mode only
+#   error PLUGIN_ASR should be compiled in Release mode only
 #endif
-#define PLUGIN_ASR_EXPORTS
+#define PLUGIN_EXPORTS
 #include "plugin/asr.h"
 #include "stream_worker.hpp"
 #include "model_file.hpp"
@@ -38,7 +38,7 @@ namespace {
         return { reinterpret_cast<const char*>(text.data()), text.size() };
     }
 }
-struct plugin_asr_stream final : asr::Worker {
+struct PLUGIN_ASR_stream final : asr::Worker {
     struct Model {
         whisper_context* ctx = nullptr;
         whisper_state* state = nullptr;
@@ -71,8 +71,8 @@ struct plugin_asr_stream final : asr::Worker {
     std::vector<whisper_token> prompt;
     whisper_vad_context* vad = nullptr;
     int n_threads = 1;
-    ~plugin_asr_stream() override { stop(); if (vad) whisper_vad_free(vad); }
-    static bool abort_compute(void* self) { return static_cast<plugin_asr_stream*>(self)->cancelled(); }
+    ~PLUGIN_ASR_stream() override { stop(); if (vad) whisper_vad_free(vad); }
+    static bool abort_compute(void* self) { return static_cast<PLUGIN_ASR_stream*>(self)->cancelled(); }
     void reset_vad() override { whisper_vad_reset_state(vad); }
     void reset_decoder() override { model.reset(); }
     void prepare_prompt() {
@@ -161,8 +161,8 @@ struct plugin_asr_stream final : asr::Worker {
     }
 
 };
-int32_t PLUGIN_ASR_CALL plugin_asr_open(const char* directory, int32_t threads,
-    plugin_asr_stream** out, char* error, uint32_t cap) {
+int32_t PLUGIN_CALL plugin_asr_open(const char* directory, int32_t threads,
+    PLUGIN_ASR_stream** out, char* error, uint32_t cap) {
     if (out) *out = nullptr;
     copy_error(error, cap, "");
     if (!directory || !*directory || !out || threads < 0 || threads > 64 || (!error && cap)) {
@@ -176,7 +176,7 @@ int32_t PLUGIN_ASR_CALL plugin_asr_open(const char* directory, int32_t threads,
         const auto root = asr::resolve_model_directory(supplied);
         const auto model = utf8(root / "ggml-base.bin");
         const auto vad_model = utf8(root / "ggml-silero-v6.2.0.bin");
-        auto stream = std::make_unique<plugin_asr_stream>();
+        auto stream = std::make_unique<PLUGIN_ASR_stream>();
         stream->n_threads = threads ? threads : static_cast<int>(std::clamp(std::thread::hardware_concurrency(), 1u, 8u));
 #ifdef ASR_ENABLE_DIAGNOSTICS
         const auto dll = asr::path_utf8(asr::module_filename(true));
@@ -214,27 +214,27 @@ int32_t PLUGIN_ASR_CALL plugin_asr_open(const char* directory, int32_t threads,
     catch (...) { copy_error(error, cap, "Unknown ASR initialization failure"); }
     return PLUGIN_ASR_FAILED;
 }
-int32_t PLUGIN_ASR_CALL plugin_asr_push(plugin_asr_stream* s, const float* pcm, uint32_t n) {
+int32_t PLUGIN_CALL plugin_asr_push(PLUGIN_ASR_stream* s, const float* pcm, uint32_t n) {
     if (!s) return PLUGIN_ASR_INVALID;
     try { return s->push(pcm, n); }
     catch (...) { return PLUGIN_ASR_FAILED; }
 }
-int32_t PLUGIN_ASR_CALL plugin_asr_poll(plugin_asr_stream* s, plugin_asr_result* out, char* text, uint32_t cap) {
+int32_t PLUGIN_CALL plugin_asr_poll(PLUGIN_ASR_stream* s, PLUGIN_ASR_result* out, char* text, uint32_t cap) {
     if (!s) return PLUGIN_ASR_INVALID;
     try { return s->poll(out, text, cap); }
     catch (...) { return PLUGIN_ASR_FAILED; }
 }
-int32_t PLUGIN_ASR_CALL plugin_asr_finish(plugin_asr_stream* s) {
+int32_t PLUGIN_CALL plugin_asr_finish(PLUGIN_ASR_stream* s) {
     if (!s) return PLUGIN_ASR_INVALID;
     try { return s->finish(); }
     catch (...) { return PLUGIN_ASR_FAILED; }
 }
-int32_t PLUGIN_ASR_CALL plugin_asr_reset(plugin_asr_stream* s) {
+int32_t PLUGIN_CALL plugin_asr_reset(PLUGIN_ASR_stream* s) {
     if (!s) return PLUGIN_ASR_INVALID;
     try { return s->reset(); }
     catch (...) { return PLUGIN_ASR_FAILED; }
 }
-void PLUGIN_ASR_CALL plugin_asr_close(plugin_asr_stream* s) {
+void PLUGIN_CALL plugin_asr_close(PLUGIN_ASR_stream* s) {
     try { delete s; }
     catch (...) {}
 }

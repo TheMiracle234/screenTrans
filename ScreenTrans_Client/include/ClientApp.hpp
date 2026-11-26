@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Yuan Aowei
 #pragma once
 #include <glad/glad.h>
@@ -40,15 +40,18 @@
 
 #include <util/util.hpp>
 #include <util/Timer.hpp>
+#include <util/ClampdSemaphore.hpp>
 #include <imgui_ex.hpp>
 
 #include <plugin/Loader.hpp>
 #include <plugin/Asr.hpp>
 #include <plugin/translator.hpp>
+#include <plugin/Summary.hpp>
 
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <memory>
 #include <algorithm>
@@ -424,6 +427,7 @@ private:
 				ALIGN(bool8_t) mute_all_keep{};
 				ALIGN(bool8_t) allow_asr {};
 				ALIGN(bool8_t) allow_translator {};
+				ALIGN(bool8_t) allow_summary {};
 			} host;
 		} room_user;
 	};
@@ -529,11 +533,13 @@ private:
 				std::atomic<bool> mute_all_keep{ false };
 				std::atomic<bool> allow_asr{ true };
 				std::atomic<bool> allow_translator{ true };
+				std::atomic<bool> allow_summary{ true };
 			} host;
 		} room_user;
 		struct {
 			std::atomic<bool> allow_asr{ true };
 			std::atomic<bool> allow_translator{ true };
+			std::atomic<bool> allow_summary{ true };
 		} plugin;
 	} ui;
 
@@ -553,8 +559,40 @@ private:
 		}
 	};
 
+	// summary 插件的完整状态。它独立于 ClientApp 存活：
+	// download 时把 shared_ptr 交给后台收尾线程，由收尾线程 join 工作线程、
+	// stop 引擎、释放 DLL 之后才销毁，因此 download 自身不阻塞。
+	struct SummaryPlugin {
+		std::string dir;
+		std::mutex mtx;
+		plugin::Loader loader{};
+		plugin::summary::fn::start start{};
+		plugin::summary::fn::ready ready{};
+		plugin::summary::fn::cancel cancel{};
+		plugin::summary::fn::generate generate{};
+		plugin::summary::fn::lasterror lasterror{};
+		plugin::summary::fn::stop stop{};
+		ClampedSemaphore busy{0, 1};
+		std::atomic<bool> running{ false };      // summaryThread 是否继续运行
+		std::atomic<bool> generating{ false };   // 是否正在推理（UI 进度用）
+		std::atomic<bool> cancel_sent{ false };  // 本轮推理是否已经因超时请求过取消
+		std::atomic<long long> gen_start_ms{ 0 };
+		std::jthread thread;
+		struct {
+			std::mutex mtx;
+			const std::string prompt = "简要总结以下内容";
+			std::string content;
+			std::string result;
+			std::string error;
+			std::string src;
+			std::string modelName;
+			bool modelLoaded{};
+		} ui;
+	};
+
 	struct {
 		struct {
+			std::string dir{};
 			plugin::Loader loader{};
 			plugin::asr::fn::AsrOpen open{};
 			plugin::asr::fn::AsrPush push{};
@@ -563,12 +601,9 @@ private:
 			plugin::asr::fn::AsrReset reset{};
 			plugin::asr::fn::AsrClose close{};
 			std::mutex mtx;
-			plugin_asr_stream* stream = nullptr;
+			PLUGIN_ASR_stream* stream = nullptr;
 			plugin::asr::AsrUi ui;
-
-			std::string dir{};
 		} asr;
-
 		struct {
 			using Direction = ClientApp::TranslateDirection;
 
@@ -587,6 +622,9 @@ private:
 			std::string result;
 			Direction direction{};
 		} translator;
+		std::shared_ptr<SummaryPlugin> summary;   // 为空表示 summary 当前未加载
+		std::string summary_dir;                  // 用户选的插件目录（加载前也要记住）
+		std::string summary_error;                // 加载失败原因（实例还没建起来时显示）
 	} plug;
 
 	template<bool mtx>
@@ -595,6 +633,9 @@ private:
 	void asrDownload();
 	template<bool mtx>
 	void asrPushData(const float* audioFrames, size_t count);
+	std::string asrHistoryPath();
+	std::string asrRecentHistory();
+	std::string asrTotalHistory();
 	//template<bool mtx>
 	//void asrSetStatus(std::string_view status) {
 	//	if constexpr (mtx) {
@@ -621,8 +662,15 @@ private:
 			if (plug.translator.error.empty()) { plug.translator.error = error; }
 		}
 	}
-
 	void translateThread();
+
+	template<bool mtx>
+	bool summaryOn();
+	template<bool mtx>
+	bool summaryReady();
+	void summaryLoad();
+	void summaryDownload();
+	static void summaryThread(std::shared_ptr<SummaryPlugin> st);
 
 public:
 	ClientApp();

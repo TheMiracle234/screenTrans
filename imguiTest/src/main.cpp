@@ -85,22 +85,22 @@ struct AsrUi {
     bool        dirty = false;
 };
 
-static void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll, AsrUi& ui) {
+static void drain_events(PLUGIN_stream* s, plugin::asr::fn::AsrPoll pfn_poll, AsrUi& ui) {
     std::vector<char> buf(65536);
-    plugin_asr_result r{};
+    PLUGIN_result r{};
     r.struct_size = sizeof(r);
 
     for (int iter = 0; iter < 256; ++iter) {
         int32_t st = pfn_poll(s, &r, buf.data(), (uint32_t)buf.size());
 
-        if (st == PLUGIN_ASR_EMPTY || st == PLUGIN_ASR_OK) break;
+        if (st == PLUGIN_EMPTY || st == PLUGIN_OK) break;
 
-        if (st == PLUGIN_ASR_BUFFER_SMALL) {
+        if (st == PLUGIN_BUFFER_SMALL) {
             if (r.text_bytes + 1 > buf.size()) buf.resize(r.text_bytes + 1);
             continue;
         }
 
-        if (st != PLUGIN_ASR_EVENT) {
+        if (st != PLUGIN_EVENT) {
             std::lock_guard lk(ui.mtx);
             ui.status = "ASR Poll Error: " + std::to_string(st);
             ui.dirty = true;
@@ -109,7 +109,7 @@ static void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll
 
         std::lock_guard lk(ui.mtx);
         switch (r.type) {
-        case PLUGIN_ASR_PARTIAL:
+        case PLUGIN_PARTIAL:
             if (r.utterance_id != ui.current_utterance) {
                 if (!ui.partial.empty()) {
                     ui.history += ui.partial;
@@ -122,7 +122,7 @@ static void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll
             ui.dirty = true;
             break;
 
-        case PLUGIN_ASR_FINAL: {
+        case PLUGIN_FINAL: {
             std::string t = buf.data();
             if (!t.empty()) {
                 ui.history += t;
@@ -133,18 +133,18 @@ static void drain_events(plugin_asr_stream* s, plugin::asr::fn::AsrPoll pfn_poll
             break;
         }
 
-        case PLUGIN_ASR_GAP:
+        case PLUGIN_GAP:
             ui.status = "ASR Audio Overflow. Some data dropped.";
             ui.dirty = true;
             break;
 
-        case PLUGIN_ASR_ERROR:
+        case PLUGIN_ERROR:
             ui.status = "ASR Error: ";
             ui.status += buf.data();
             ui.dirty = true;
             break;
 
-        case PLUGIN_ASR_END:
+        case PLUGIN_END:
             break;
         }
     }
@@ -214,7 +214,7 @@ int main() {
 
     // ==================== ASR State & Thread Safety ====================
     std::mutex asr_mtx;
-    plugin_asr_stream* asr_stream = nullptr;
+    PLUGIN_stream* asr_stream = nullptr;
     AsrUi ui;
 
     // ==================== 封装启用/停止函数 ====================
@@ -228,7 +228,7 @@ int main() {
             plug.asr.loader.free();
 
             // 1. 加载 DLL
-            if (!plug.asr.loader.load("plugin/plugin_ASR.dll")) {
+            if (!plug.asr.loader.load("plugin/PLUGIN.dll")) {
                 std::lock_guard ui_lk(ui.mtx);
                 ui.status = "ASR Load Failed: Cannot load DLL";
                 return;
@@ -253,7 +253,7 @@ int main() {
             // 3. 打开 ASR 流
             char error[512] = {};
             int32_t rc = plug.asr.open("plugin", 0, &asr_stream, error, sizeof(error));
-            if (rc != PLUGIN_ASR_OK || !asr_stream) {
+            if (rc != PLUGIN_OK || !asr_stream) {
                 asr_stream = nullptr;
                 plug.asr.loader.free(); // 失败必须卸载
                 std::lock_guard ui_lk(ui.mtx);
@@ -344,7 +344,7 @@ int main() {
                     int32_t r = plug.asr.push(asr_stream, audioFrames.data(),
                         static_cast<uint32_t>(audioFrames.size()));
 
-                    if (r == PLUGIN_ASR_INVALID) {
+                    if (r == PLUGIN_INVALID) {
                         std::lock_guard ui_lk(ui.mtx);
                         ui.status = "Push INVALID (audio data rejected)";
                     }

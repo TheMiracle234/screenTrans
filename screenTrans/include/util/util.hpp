@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <chrono>
 
+#include <wins/wc_u8.hpp>
+
 template<typename Fn>
 struct Defer {
 	Fn m_fn;
@@ -67,4 +69,53 @@ inline bool saveFile(std::string_view path, const void* data, std::size_t bytes)
 		return false;
 	file.write(static_cast<const char*>(data), static_cast<std::streamsize>(bytes));
 	return file.good();
+}
+
+inline [[nodiscard]] bool file_append(std::string_view path, const void* data, size_t bytes) noexcept
+{
+	if (bytes == 0)
+		return true;
+
+	// std::ios::app 标准追加模式，每次写都到末尾；std::ios::binary 关闭文本转义(\n<->\r\n)
+	std::ofstream f{ path.data(), std::ios::app | std::ios::binary };
+	if (!f.is_open())
+		return false;
+
+	// write 接收 const char*，强制转换
+	f.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(bytes));
+
+	// 检查两点：流无错误，并且写入数量匹配
+	if (!f)
+		return false;
+
+	f.close();
+	return true;
+}
+
+inline [[nodiscard]] bool file_append(std::wstring_view path, const void* data, size_t bytes) noexcept {
+	return ::file_append(wins::WideToUtf8(path), data, bytes);
+}
+
+inline [[nodiscard]] std::string read_all_file(std::string_view path) noexcept
+{
+	std::ifstream f{ path.data(), std::ios::in | std::ios::binary };
+	if (!f.is_open())
+		return {};
+
+	// 一次性读取全部：先取大小，预分配内存，一次read
+	f.seekg(0, std::ios::end);
+	const auto sz = f.tellg();
+	if (sz < 0)
+		return {};
+
+	std::string buf;
+	buf.resize(static_cast<size_t>(sz));
+
+	f.seekg(0, std::ios::beg);
+	f.read(buf.data(), static_cast<std::streamsize>(sz));
+
+	if (!f)
+		buf.clear();
+
+	return buf;
 }

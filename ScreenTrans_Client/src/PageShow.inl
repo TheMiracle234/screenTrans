@@ -1,7 +1,9 @@
-﻿#include <ClientApp.hpp>
+#include <ClientApp.hpp>
 #include <imgui_ex.hpp>
 #include <filesystem>
 #include <wins/wc_u8.hpp>
+#include <format>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -18,6 +20,45 @@ void resize_emplace(std::vector<T>& v, std::size_t n, Args&&... args) {
 	}
 }
 
+// 从 [0, targetSplitPos) 范围内，从 targetSplitPos 往回找第一个 '\n'
+// 找到：savedPart = s[0..pos+1]，返回 s[pos+1..end]
+// 找不到换行：直接返回整个字符串，savedPart 为空（不分割）
+[[nodiscard]]
+static std::string_view split_at_newline_near(std::string_view s, size_t targetSplitPos, std::string& savedPart) noexcept
+{
+	savedPart.clear();
+	if (s.empty()) return s;
+
+	// 防止越界
+	targetSplitPos = std::min(targetSplitPos, s.size());
+	if (targetSplitPos == 0) return s;
+
+	const char* const begin = s.data();
+	const char* const p = begin + targetSplitPos;
+
+	// 反向查找 '\n'：从 p-1 往 begin 扫
+	const char* found = nullptr;
+	for (const char* it = p - 1; it >= begin; --it)
+	{
+		if (*it == '\n')
+		{
+			found = it;
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		// 这段里没有换行，不切割
+		return s;
+	}
+
+	const size_t splitIdx = found - begin + 1; // 包含这个 \n
+	savedPart.assign(begin, splitIdx);
+	return s.substr(splitIdx);
+}
+
+
 struct loadPluginRes {
 	bool on;
 	bool changed;
@@ -27,19 +68,25 @@ static inline loadPluginRes loadPlugin(const char* plug_type_dir, std::string& p
 	const bool on0 = on;
 	bool on1 = on0;
 	loadPluginRes res;
-	if (ImGui::BeginCombo("plugins", plug_dir.c_str())) {
-		if (!on0) {
-			std::string dir;
-			for (const auto& entry : fs::directory_iterator(plug_type_dir)) {
-				wins::WideToUtf8(dir, entry.path().c_str());
-				if (ImGui::Selectable(dir.c_str())) {
-					plug_dir = std::move(dir);
-					break;
-				}
-			}
-		}
+	if (!on0) {
+		ImGui::SelectFile("plugins", plug_type_dir, plug_dir);
+	}
+	else if (ImGui::BeginCombo("plugins", plug_dir.c_str())) {
 		ImGui::EndCombo();
 	}
+	//if (ImGui::BeginCombo("plugins", plug_dir.c_str())) {
+	//	if (!on0) {
+	//		std::string dir;
+	//		for (const auto& entry : fs::directory_iterator(plug_type_dir)) {
+	//			dir = entry.path().generic_string().c_str();
+	//			if (ImGui::Selectable(dir.c_str())) {
+	//				plug_dir = std::move(dir);
+	//				break;
+	//			}
+	//		}
+	//	}
+	//	ImGui::EndCombo();
+	//}
 	if (!plug_dir.empty()) {
 		ImGui::Checkbox("load", &on1);
 	}
@@ -129,11 +176,13 @@ inline ClientApp::Page ClientApp::Show() {
 		float fps = 0;
 		bool show_settings = true;
 		bool at_bottom = true;
+		int max_history_bytes = 2048;
 		struct {
 			char words_msg_buf[sizeof(ui.send.words_msg.buf)]{};
 			char name_buf[2 * sizeof(p1.name)]{};
 			char rename[sizeof(p1.name)]{};
 			uint32_t room_passwd{ Room::invalid_passwd };
+			std::string summary_model{};
 		} mid;
 		//std::shared_ptr<ST::DecodedFrame> decodedFrame;
 
@@ -515,6 +564,7 @@ inline ClientApp::Page ClientApp::Show() {
 					ImGui::Text("plugin allow: ");
 					COMP_ATOMIC(ImGui::Checkbox, "allow_asr", ui.room_user.host.allow_asr);
 					COMP_ATOMIC(ImGui::Checkbox, "allow_translator", ui.room_user.host.allow_translator);
+					COMP_ATOMIC(ImGui::Checkbox, "allow_summary", ui.room_user.host.allow_summary);
 					ImGui::TreePop();
 				}// host
 				if (ImGui::TreeNode("plugin")) {
@@ -539,6 +589,12 @@ inline ClientApp::Page ClientApp::Show() {
 								}
 								std::lock_guard ui_lk(plug.asr.ui.mtx);
 								if (!plug.asr.ui.history.empty()) {
+									if (plug.asr.ui.history.size() > max_history_bytes) [[unlikely]] {
+										std::string save;
+										std::string_view remain = ::split_at_newline_near(plug.asr.ui.history, max_history_bytes / 2, save);
+										::file_append(asrHistoryPath(), save.data(), sizeof(save));
+										plug.asr.ui.history = remain;
+									}
 									ImGui::TextUnformatted(plug.asr.ui.history.c_str());
 								}
 
@@ -555,10 +611,6 @@ inline ClientApp::Page ClientApp::Show() {
 									plug.asr.ui.status = "Asr running normally";
 								}
 							}
-							{
-								std::lock_guard lock(plug.translator.mtx_ui);
-								plug.translator.toBeTranslated = partialStay;
-							}
 
 							ImGui::PopTextWrapPos();
 							if (at_bottom) {
@@ -566,6 +618,7 @@ inline ClientApp::Page ClientApp::Show() {
 							}
 							ImGui::EndChild();
 							ImGui::Checkbox("at_bottom", &at_bottom);
+							ImGui::SliderInt("max_history_bytes", &max_history_bytes, 256, 0x2FFF);
 						}
 						break;
 					}// asr
@@ -581,7 +634,6 @@ inline ClientApp::Page ClientApp::Show() {
 							if (changed) [[unlikely]] {
 								threadTranslate = std::make_unique<std::jthread>(&ClientApp::translateThread, this);
 							}
-
 
 							std::string now_label = plug.translator.direction.src + " -> " + plug.translator.direction.tar;
 							if (ImGui::BeginCombo("Translation Direction", now_label.c_str())) {
@@ -646,6 +698,82 @@ inline ClientApp::Page ClientApp::Show() {
 
 						break;
 					}// translator
+					while (ImGui::TreeNode("summary")) {
+						DEFER{ ImGui::TreePop };
+
+						if (!get(ui.plugin.allow_summary)) {
+							ImGui::Text("disabled by host");
+							break;
+						}
+						ImGui::PushIdGuard pushIdGuard(__LINE__);
+						auto [on, changed] = ::loadPlugin("plugin/summary", plug.summary_dir, this, summaryOn<false>(), &ClientApp::summaryLoad, &ClientApp::summaryDownload);
+						(void)changed;   // 加载/卸载都由 summaryLoad / summaryDownload 管理
+						auto st = plug.summary;   // 本帧使用的实例；download 之后这里会变成空
+						if (on && st) {
+							ImGui::SelectFile("model_name", fs::path{ st->dir } / "models", mid.summary_model);
+							{
+								std::lock_guard lk_ui{ st->ui.mtx };
+								st->ui.src = mid.summary_model;
+							}
+							if (!mid.summary_model.empty() &&
+								!st->ready() &&
+								ImGui::Button("load_model")
+							) {
+								st->busy.release();
+							}
+
+							if (st->generating.load()) {
+								const auto now = std::chrono::steady_clock::now().time_since_epoch();
+								const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+								const long long started = st->gen_start_ms.load();
+								const long long elapsed = (started > 0 ? (ms - started) : 0);
+								ImGui::Text((char*)u8"正在总结… %.1f s", elapsed / 1000.0);
+								// 超时取消放在 UI 线程做：此时实例一定还活着，
+								// 不需要在工作线程里保存函数指针副本。
+								if (!st->cancel_sent.load() && elapsed > 90000) {
+									st->cancel_sent = true;
+									if (st->cancel) { st->cancel(); }
+									std::cout << "[summary] generate timeout(90s), requesting cancel\n";
+								}
+							}
+							else if (st->ready() && ImGui::Button("summary")) {
+								{
+									// 内容由 UI 线程取好放进实例，工作线程不再访问 plug.asr
+									std::lock_guard lk_ui{ st->ui.mtx };
+									std::lock_guard lk_asr{ plug.asr.ui.mtx };
+									st->ui.content = plug.asr.ui.history;
+								}
+								st->busy.release();
+							}
+
+
+							ImGui::BeginChild("##translate", ImVec2(-FLT_MIN, 150), true, ImGuiWindowFlags_HorizontalScrollbar);
+							ImGui::PushTextWrapPos(0.0f);
+
+							{
+								std::lock_guard lock{ st->ui.mtx };
+								if (!st->ui.result.empty()) {
+									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.78f, 1.0f, 1.0f));
+									ImGui::TextUnformatted(st->ui.result.c_str());
+									ImGui::PopStyleColor();
+								}
+								if (!st->ui.error.empty()) {
+									ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+									ImGui::TextUnformatted(st->ui.error.c_str());
+									ImGui::PopStyleColor();
+								}
+							}
+
+							ImGui::PopTextWrapPos();
+							ImGui::EndChild();
+						}
+						else if (on && !plug.summary_error.empty()) {
+							ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+							ImGui::TextUnformatted(plug.summary_error.c_str());
+							ImGui::PopStyleColor();
+						}
+						break;
+					}// summary
 					ImGui::TreePop();
 				}// plugin
 
@@ -703,7 +831,7 @@ inline ClientApp::Page ClientApp::Show() {
 					if (target_share_camera) {
 						ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f), ImGuiCond_FirstUseEver);
 						ImGui::SetNextWindowPos(ImVec2(static_cast<float>(sc_width - 340), 20.0f), ImGuiCond_FirstUseEver);
-						ImGui::Begin(("camera-" + users[target_id].name + "###camera-" + std::to_string(i)).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
+						ImGui::Begin(std::format("camera-{}###camera-{}", users[target_id].name, i).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
 						const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
 						ImVec2 winSize = ImGui::GetWindowSize();
 						winSize.y -= titleBarH;
@@ -787,7 +915,7 @@ inline ClientApp::Page ClientApp::Show() {
 					}
 					
 					if (share_video) {
-						ImGui::Begin(("screen-" + user_name + "###screen-" + std::to_string(i)).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
+						ImGui::Begin(std::format("screen-{}###screen-{}", user_name, i).c_str(), nullptr, ImGuiWindowFlags_NoScrollbar);
 						const float titleBarH = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_NoTitleBar ? 0.0f : ImGui::GetFrameHeight();
 						ImVec2 winSize = ImGui::GetWindowSize();
 						winSize.y -= titleBarH;
@@ -871,6 +999,9 @@ inline ClientApp::Page ClientApp::Show() {
 			glfwPollEvents();
 			renderDealing();
 		}
+
+		// 离开 Show 前先把 summary 线程收掉（最多等 3 秒，不会把窗口退出卡在推理上）
+		summaryDownload();
 
 		client.Close();
 		client_audio.Close();
