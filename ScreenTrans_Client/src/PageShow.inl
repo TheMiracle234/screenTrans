@@ -730,7 +730,7 @@ inline ClientApp::Page ClientApp::Show() {
 								ImGui::Text((char*)u8"正在总结… %.1f s", elapsed / 1000.0);
 								// 超时取消放在 UI 线程做：此时实例一定还活着，
 								// 不需要在工作线程里保存函数指针副本。
-								if (!st->cancel_sent.load() && elapsed > 90000) {
+								if (!st->cancel_sent.load() && elapsed > 9000000) {
 									st->cancel_sent = true;
 									if (st->cancel) { st->cancel(); }
 									std::cout << "[summary] generate timeout(90s), requesting cancel\n";
